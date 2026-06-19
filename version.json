@@ -1,5 +1,5 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.4",
   "updated": "2026-06-19",
-  "notes": "Declined sau I'm Human -> F5 dien lai card tu dau (toi da 3 lan), khong dung nua"
+  "notes": "Fix cardholder name: verify logic cho text field (khong dung digit compare), selector chinh xac input[id=billingName] tren main page, khong qua iframe loop"
 }
