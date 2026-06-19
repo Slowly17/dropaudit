@@ -1,5 +1,5 @@
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "updated": "2026-06-19",
-  "notes": "Fix: queue_done clears email/pass on success/done/failed/declined; queue_done called on pay_success; Queue section always visible with accent border"
+  "notes": "Fix: version hiển thị đúng (không còn v3.0); Queue preview section rõ hơn với header bar accent; Export Result nút nổi bật; /api/version endpoint mới"
 }

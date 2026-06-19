@@ -2751,6 +2751,15 @@ def get_dashboard():
 # ─── Static ────────────────────────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/api/version")
+def api_version():
+    try:
+        import json as _json
+        with open("version.json", "r") as f:
+            return _json.load(f)
+    except Exception:
+        return {"version": "unknown"}
+
 @app.get("/")
 def root():
     return FileResponse("static/index.html")
