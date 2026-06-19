@@ -1,5 +1,5 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "updated": "2026-06-19",
-  "notes": "Declined -> F5 + thu the tiep theo tu queue. Xoa row da dung. Ghi declined_results.json (Timestamp|Mail|Card|Reason). Them tab Dashboard voi hieu suat automation + bang declined."
+  "notes": "1 phien = 1 mail/pass + toi da 3 the. Declined -> thu the tiep (giu mail/pass cu). Du 3 the declined -> dong phien."
 }

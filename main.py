@@ -679,9 +679,11 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 2: Stripe Checkout ─────────────────────────────────
                     if card_number:
                         _pay_success = False
-                        # _current_card_row: thẻ đang dùng (ban đầu là row hiện tại, khi declined → thẻ tiếp từ queue)
+                        # 1 phiên = 1 mail/pass + tối đa 3 thẻ
+                        # _current_card_row: thẻ đang dùng (chỉ lấy card info, mail/pass giữ nguyên)
                         _current_card_row = row
-                        for _pay_retry in range(10):  # tối đa 10 thẻ thử
+                        _cards_tried = 0  # đếm số thẻ đã thử trong phiên này
+                        for _pay_retry in range(3):  # tối đa 3 thẻ/phiên
                           # Đọc thông tin thẻ từ _current_card_row
                           card_number     = _current_card_row.get("card_number", "").strip().replace(" ", "")
                           exp_month       = _current_card_row.get("exp_month", "").strip().zfill(2)
@@ -695,10 +697,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           if not card_number:
                               log(f"[{idx+1}] ⚠ Không còn thẻ để thử — dừng")
                               break
-                          if _pay_retry > 0:
-                            log(f"[{idx+1}] 🔄 Retry thẻ mới ({_pay_retry+1}) — reload Stripe...")
-                            page.reload()
-                          log(f"[{idx+1}] ⏳ Đợi Stripe Checkout load (proxy chậm — tối đa 60s)...")
+                          log(f"[{idx+1}] ⏳ Đợi Stripe Checkout load thẻ {_pay_retry+1}/3 (tối đa 60s)...")
                           # Đợi redirect tới stripe hoặc trang có card input
                           stripe_loaded = False
                           for _w in range(60):
@@ -1394,30 +1393,37 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               break
 
                           if _card_declined:
-                              # ── Ghi declined record ──
+                              _cards_tried += 1
+                              # ── Ghi declined record (dùng email của phiên, không phải email của row thẻ) ──
                               _dec_reason = "Your card was declined"
-                              _dec_email  = _current_card_row.get("email", email)
                               _dec_card   = card_number
-                              log(f"[{idx+1}] 📝 Ghi declined: {_dec_email} | {_dec_card[:4]}****")
+                              log(f"[{idx+1}] 📝 Ghi declined: {email} | {_dec_card[:4]}**** (thẻ {_cards_tried}/3)")
                               try:
-                                  save_declined_record(_dec_email, _dec_card, _dec_reason, cardholder_name)
+                                  save_declined_record(email, _dec_card, _dec_reason, cardholder_name)
                               except Exception as _de:
                                   log(f"[{idx+1}] ⚠ Lỗi ghi declined: {_de}")
-                              # ── Đánh dấu row declined trong queue ──
+                              # ── Đánh dấu card row declined trong queue ──
                               try:
                                   _dec_idx = _current_card_row.get("_idx")
                                   if _dec_idx is not None:
                                       queue_done(_dec_idx, "declined")
                               except Exception:
                                   pass
-                              # ── Lấy thẻ tiếp theo từ queue ──
+                              # ── Kiểm tra đã đủ 3 thẻ chưa ──
+                              if _cards_tried >= 3:
+                                  log(f"[{idx+1}] ⏹ Đã thử 3 thẻ trong phiên — đóng phiên")
+                                  _keep_alive.wait()
+                                  break
+                              # ── Lấy thẻ tiếp theo từ queue (chỉ lấy card, giữ mail/pass cũ) ──
                               _next_row = queue_pop()
                               if _next_row:
+                                  # Chỉ lấy thông tin card từ row mới, email/pass giữ nguyên
                                   _current_card_row = _next_row
-                                  log(f"[{idx+1}] ➡ Thẻ tiếp: {_next_row.get('card_number','')[:4]}**** — F5 reload Stripe")
-                                  continue  # reload + điền thẻ mới ở đầu vòng lặp
+                                  log(f"[{idx+1}] ➡ Thẻ {_cards_tried+1}/3: {_next_row.get('card_number','')[:4]}**** — F5 Stripe")
+                                  page.reload()
+                                  continue  # reload + điền thẻ mới, KHÔNG signup lại
                               else:
-                                  log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — dừng")
+                                  log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
                                   _keep_alive.wait()
                                   break
 
