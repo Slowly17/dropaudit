@@ -1417,6 +1417,16 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               # ── Lấy thẻ tiếp theo từ queue (chỉ lấy card, giữ mail/pass cũ) ──
                               _next_row = queue_pop()
                               if _next_row:
+                                  # Email/pass của row mới không cần dùng → đánh dấu consumed ngay
+                                  _next_email = _next_row.get("email", "")
+                                  if _next_email:
+                                      log(f"[{idx+1}] 🗑 Bỏ mail '{_next_email}' (chỉ lấy card)")
+                                  try:
+                                      _ni = _next_row.get("_idx")
+                                      if _ni is not None:
+                                          queue_done(_ni, "consumed")  # mail đã bỏ, chỉ dùng card
+                                  except Exception:
+                                      pass
                                   # Chỉ lấy thông tin card từ row mới, email/pass giữ nguyên
                                   _current_card_row = _next_row
                                   log(f"[{idx+1}] ➡ Thẻ {_cards_tried+1}/3: {_next_row.get('card_number','')[:4]}**** — F5 Stripe")

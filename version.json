@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "updated": "2026-06-19",
-  "notes": "1 phien = 1 mail/pass + toi da 3 the. Declined -> thu the tiep (giu mail/pass cu). Du 3 the declined -> dong phien."
+  "notes": "Lay card 2/3 tu queue -> xoa mail/pass row do ngay (danh dau consumed), khong dung lai"
 }
