@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>v5</title>
+<style>
+:root{
+  --bg:#0d0f14;--card:#161b24;--border:#252d3a;
+  --accent:#4f8ef7;--accent2:#22d3a0;--danger:#f75252;--warn:#f7a752;
+  --text:#e2e8f0;--muted:#6b7a99;--radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+
+header{display:flex;align-items:center;gap:14px;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--card);}
+header h1{font-size:1.15rem;font-weight:700;color:var(--accent);}
+header span{font-size:.75rem;color:var(--muted);}
+.hright{margin-left:auto;display:flex;align-items:center;gap:10px;}
+
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--border);background:var(--card);padding:0 28px;}
+.tab{padding:13px 22px;font-size:.88rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+.page{display:none;max-width:1300px;margin:0 auto;padding:28px 20px;}
+.page.active{display:block;}
+
+.btn{padding:8px 18px;border-radius:7px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;transition:opacity .15s,transform .1s;}
+.btn:hover{opacity:.85;}.btn:active{transform:scale(.97);}.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-success{background:var(--accent2);color:#0d0f14;}
+.btn-danger{background:var(--danger);color:#fff;}
+.btn-warn{background:var(--warn);color:#0d0f14;}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);}
+.btn-sm{padding:5px 12px;font-size:.78rem;}
+
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;}
+thead th{background:#1a2030;padding:11px 16px;text-align:left;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+tbody tr{border-top:1px solid var(--border);transition:background .1s;}
+tbody tr:hover{background:#1a2030;}
+td{padding:11px 16px;font-size:.85rem;vertical-align:middle;}
+
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.72rem;font-weight:700;text-transform:uppercase;}
+.badge-running{background:#0d3a28;color:var(--accent2);}
+.badge-stopped{background:#1e2535;color:var(--muted);}
+.badge-starting{background:#2b2010;color:var(--warn);animation:pulse 1s infinite;}
+.badge-error{background:#3a0d0d;color:var(--danger);}
+.badge-done{background:#0d3a28;color:var(--accent2);}
+.badge-queued{background:#1a2540;color:var(--accent);}
+.badge-stopping{background:#2b2010;color:var(--warn);}
+
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px;width:100%;max-width:520px;transform:translateY(20px);transition:transform .2s;max-height:90vh;overflow-y:auto;}
+.overlay.open .modal{transform:translateY(0);}
+.modal h3{font-size:1.05rem;margin-bottom:20px;color:var(--accent);}
+.form-group{margin-bottom:15px;}
+label{display:block;font-size:.75rem;color:var(--muted);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+input[type=text],input[type=number],input[type=password],select,textarea{width:100%;padding:9px 13px;border-radius:7px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:.88rem;outline:none;transition:border-color .15s;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;}
+
+.sub-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;}
+.sub-tab{padding:9px 18px;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.sub-tab.active{color:var(--accent2);border-bottom-color:var(--accent2);}
+.sub-page{display:none;}.sub-page.active{display:block;}
+
+.section-head{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.section-head h2{font-size:1rem;font-weight:700;}
+
+.profile-checkbox-list{max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg);}
+.profile-checkbox-item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.profile-checkbox-item:last-child{border-bottom:none;}
+.profile-checkbox-item:hover{background:#1a2030;}
+.profile-checkbox-item input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+.profile-checkbox-item .pname{font-size:.86rem;font-weight:600;}
+.profile-checkbox-item .pmeta{font-size:.74rem;color:var(--muted);margin-top:2px;}
+
+.select-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#1a2030;border-radius:8px;margin-bottom:10px;font-size:.8rem;color:var(--muted);}
+.select-bar strong{color:var(--text);}
+
+.data-table-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.data-table-wrap table{width:100%;}
+.data-table-wrap thead th{font-size:.72rem;}
+.data-table-wrap td{font-size:.82rem;padding:8px 12px;}
+
+.toast{position:fixed;bottom:24px;right:24px;background:#1e2a3a;border:1px solid var(--border);color:var(--text);padding:12px 20px;border-radius:10px;font-size:.85rem;z-index:200;opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s;pointer-events:none;max-width:320px;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.ok{border-color:var(--accent2);color:var(--accent2);}
+.toast.err{border-color:var(--danger);color:var(--danger);}
+
+/* LOGS PAGE */
+.logs-grid{display:flex;flex-direction:column;gap:14px;}
+.log-card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.log-card-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:#1a2030;}
+.log-card-head .pname{font-weight:700;font-size:.9rem;}
+.log-card-head .row-info{font-size:.75rem;color:var(--muted);margin-left:4px;}
+.log-card-body{padding:12px 16px;font-family:monospace;font-size:.76rem;line-height:1.7;color:#a0b0c8;max-height:180px;overflow-y:auto;background:#0a0c10;}
+.log-line.ok{color:var(--accent2);}.log-line.err{color:var(--danger);}.log-line.warn{color:var(--warn);}.log-line.info{color:var(--accent);}
+
+.proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
+.proxy-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.proxy-card h4{font-size:.85rem;font-weight:700;margin-bottom:8px;color:var(--accent2);}
+.proxy-card p{font-size:.78rem;color:var(--muted);margin-bottom:4px;}
+.proxy-card code{color:var(--text);background:#0d0f14;padding:2px 6px;border-radius:4px;}
+
+.empty-state{text-align:center;padding:48px 20px;color:var(--muted);}
+.empty-state p{margin-top:10px;font-size:.9rem;}
+
+.inline-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.spacer{flex:1;}
+
+.progress-bar{height:4px;border-radius:2px;background:var(--border);margin-top:6px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--accent2);transition:width .3s;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>v5</h1>
+  <span id="hdr-version">v3.0</span>
+  <div class="hright">
+    <span id="hdr-proxy-count" style="font-size:.78rem;color:var(--muted)"></span>
+    <span id="hdr-profile-count" style="font-size:.78rem;color:var(--muted)"></span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="tab active" onclick="switchTab('profiles')">Profiles</div>
+  <div class="tab" onclick="switchTab('automation')">Automation</div>
+  <div class="tab" onclick="switchTab('logs')">Logs</div>
+  <div class="tab" onclick="switchTab('proxy')">Proxy</div>
+</nav>
+
+<!-- ==================== PROFILES ==================== -->
+<div class="page active" id="page-profiles">
+  <div class="section-head">
+    <h2>Profiles</h2>
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-create-profile')">+ Tạo profile</button>
+    <button class="btn btn-ghost btn-sm" onclick="openModal('modal-bulk-create')">+ Tạo hàng loạt</button>
+    <button class="btn btn-warn btn-sm" id="btn-bulk-assign-proxy" onclick="bulkAssignProxy()" disabled>🔀 Gán proxy hàng loạt</button>
+    <div class="spacer"></div>
+    <input type="text" id="search-profile" placeholder="Tìm profile..." style="width:180px;" oninput="renderProfiles()"/>
+  </div>
+
+  <div class="select-bar">
+    <input type="checkbox" id="chk-select-all" onchange="toggleSelectAll(this)"/>
+    <label for="chk-select-all" style="text-transform:none;color:var(--text);cursor:pointer;">Chọn tất cả</label>
+    <strong id="selected-count">0</strong> <span>profile được chọn</span>
+    <div class="spacer"></div>
+    <button class="btn btn-danger btn-sm" id="btn-delete-selected" onclick="deleteSelected()" disabled>Xóa đã chọn</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px;"></th>
+          <th>Tên</th>
+          <th>Proxy</th>
+          <th>Seed</th>
+          <th>Timezone</th>
+          <th>Trạng thái</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="profile-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ==================== AUTOMATION ==================== -->
+<div class="page" id="page-automation">
+  <div class="sub-tabs">
+    <div class="sub-tab active" onclick="switchSubTab('auto','config')">1 · Cấu hình</div>
+    <div class="sub-tab" onclick="switchSubTab('auto','data')">2 · Dữ liệu &amp; Chạy</div>
+  </div>
+
+  <!-- Cấu hình: Script + Profiles trên cùng 1 trang -->
+  <div class="sub-page active" id="auto-config">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+      <!-- Cột trái: Script -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;">
+        <div class="section-head" style="margin-bottom:14px;">
+          <h2 style="font-size:1rem;">Chọn script</h2>
+        </div>
+        <div id="script-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+      </div>
+
+      <!-- Cột phải: Profiles -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;">
+        <div class="section-head" style="margin-bottom:12px;">
+          <h2 style="font-size:1rem;">Chọn profiles</h2>
+          <div class="spacer"></div>
+          <button class="btn btn-ghost btn-sm" onclick="autoSelectAll(true)">Chọn tất cả</button>
+          <button class="btn btn-ghost btn-sm" onclick="autoSelectAll(false)">Bỏ chọn</button>
+        </div>
+        <div class="select-bar" style="margin-bottom:12px;">
+          <strong id="auto-selected-count">0</strong>&nbsp;profile được chọn
+        </div>
+        <div class="profile-checkbox-list" id="auto-profile-list" style="max-height:420px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- Tóm tắt + nút sang bước 2 -->
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;">
+      <div style="font-size:.85rem;">Script: <strong id="cfg-script-name" style="color:var(--accent2);">— chưa chọn</strong></div>
+      <div style="font-size:.85rem;">Profiles: <strong id="cfg-profiles-count" style="color:var(--accent2);">0</strong></div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="switchSubTab('auto','data')">Tiếp → Dữ liệu &amp; Chạy</button>
+    </div>
+  </div>
+
+  <!-- Dữ liệu & Chạy sub-tab -->
+  <div class="sub-page" id="auto-data">
+    <div class="section-head">
+      <h2>Dữ liệu & Chạy</h2>
+    </div>
+
+    <!-- Queue controls -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+        <h3 style="font-size:.95rem;font-weight:700;">Queue</h3>
+        <span id="queue-count-badge" class="badge badge-queued">0 hàng</span>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" onclick="loadQueue()">Làm mới</button>
+        <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa queue</button>
+      </div>
+
+      <!-- Import section -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <label class="btn btn-primary btn-sm" style="cursor:pointer;margin:0;">
+          📂 Import CSV / Excel
+          <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importFilePreview(this)">
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="toggleManualInput()">✏️ Nhập thủ công</button>
+        <span style="font-size:.78rem;color:var(--muted);">Sau khi import có thể chỉnh sửa từng ô trước khi đẩy vào queue.</span>
+      </div>
+
+      <!-- Manual input (ẩn mặc định) -->
+      <div id="manual-input-wrap" style="display:none;margin-bottom:12px;">
+        <div class="form-group">
+          <label>Nhập thủ công (mỗi dòng 1 bản ghi, hoặc JSON array)</label>
+          <textarea id="queue-input" rows="5" placeholder='user1@gmail.com|password1&#10;user2@gmail.com|password2&#10;Hoặc JSON: [{"email":"a@b.com","pass":"123"}]'></textarea>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="parseManualInput()">→ Xem trước</button>
+      </div>
+
+      <!-- Preview table -->
+      <div id="import-preview-wrap" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <span id="import-preview-info" style="font-size:.82rem;color:var(--accent);font-weight:700;"></span>
+          <div class="spacer"></div>
+          <button class="btn btn-ghost btn-sm" onclick="addPreviewRow()">+ Thêm dòng</button>
+          <button class="btn btn-danger btn-sm" onclick="clearPreview()">✕ Xóa tất cả</button>
+        </div>
+        <div id="import-preview-table-wrap" class="data-table-wrap" style="max-height:320px;overflow-y:auto;margin-bottom:12px;"></div>
+        <button id="btn-push-preview" class="btn btn-success" onclick="pushPreviewToQueue()">✓ Đẩy vào queue (<span id="preview-row-count">0</span> hàng)</button>
+      </div>
+    </div>
+
+    <!-- Run controls -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <h3 style="font-size:.95rem;font-weight:700;">Chạy automation</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-danger btn-sm" onclick="stopAll()">⏹ Stop All</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+        <div class="form-group" style="margin:0">
+          <label>Script đã chọn</label>
+          <div id="run-script-name" style="font-size:.88rem;color:var(--accent);padding:9px 0;">—</div>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Profiles đã chọn</label>
+          <div id="run-profiles-summary" style="font-size:.88rem;color:var(--accent2);padding:9px 0;">0 profile</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-success" id="btn-run-multi" onclick="runMulti()">▶ Chạy tất cả profiles đã chọn</button>
+        <span style="font-size:.78rem;color:var(--muted);">Mỗi profile chạy song song, lấy 1 bản ghi từ queue.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== LOGS ==================== -->
+<div class="page" id="page-logs">
+  <div class="section-head">
+    <h2>Logs</h2>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" onclick="loadLogs()">Làm mới</button>
+    <button class="btn btn-danger btn-sm" onclick="stopAll()">⏹ Stop All</button>
+  </div>
+
+  <div id="logs-grid" class="logs-grid">
+    <div class="empty-state">
+      <p>Chưa có task nào đang chạy.</p>
+      <p style="margin-top:6px;font-size:.8rem;">Chạy automation từ tab <strong>Automation</strong> để xem logs ở đây.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PROXY ==================== -->
+<div class="page" id="page-proxy">
+  <div class="section-head">
+    <h2>Proxy Pool</h2>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" onclick="openModal('modal-import-proxy')">➕ Import</button>
+    <button class="btn btn-primary btn-sm" onclick="checkAllProxies()">⚡ Check All</button>
+    <button class="btn btn-warn btn-sm" onclick="clearAllProxies()">🗑 Clear All</button>
+    <button class="btn btn-ghost btn-sm" onclick="loadProxies()">🔄</button>
+  </div>
+  <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+    <span id="proxy-total" style="font-size:.85rem;color:var(--muted);">Đang tải...</span>
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="table" id="proxy-table">
+      <thead><tr>
+        <th style="width:32px;">#</th>
+        <th>Host:Port</th>
+        <th style="width:80px;">Status</th>
+        <th style="width:72px;">Ping</th>
+        <th>Ext IP</th>
+        <th style="width:56px;">Used</th>
+        <th style="width:110px;">Added</th>
+        <th style="width:100px;">Actions</th>
+      </tr></thead>
+      <tbody id="proxy-tbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">Đang tải...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Create Profile Modal -->
+<div class="overlay" id="modal-create-profile">
+  <div class="modal">
+    <h3>Tạo Profile mới</h3>
+    <div class="form-group">
+      <label>Tên profile</label>
+      <input type="text" id="cp-name" placeholder="VD: profile_001"/>
+    </div>
+    <div class="form-group">
+      <label>Proxy (tùy chọn)</label>
+      <select id="cp-proxy-select" onchange="onCreateProxyChange()">
+        <option value="">— Không dùng proxy —</option>
+      </select>
+      <div id="cp-manual-proxy-wrap" style="display:none;margin-top:8px;">
+        <input type="text" id="cp-manual-host" placeholder="host:port  VD: 1.2.3.4:1080" style="margin-bottom:6px;"/>
+        <input type="text" id="cp-manual-user" placeholder="Username (nếu có)"/>
+        <input type="text" id="cp-manual-pass" placeholder="Password (nếu có)" style="margin-top:6px;"/>
+      </div>
+      <div id="cp-proxy-tz" style="margin-top:6px;font-size:.76rem;color:var(--muted);display:none;"></div>
+    </div>
+    <div class="form-group">
+      <label>Ghi chú</label>
+      <input type="text" id="cp-note" placeholder="..."/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-create-profile')">Hủy</button>
+      <button class="btn btn-primary" onclick="createProfile()">Tạo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Create Modal -->
+<div class="overlay" id="modal-bulk-create">
+  <div class="modal">
+    <h3>Tạo hàng loạt profiles</h3>
+    <div class="form-group">
+      <label>Số lượng</label>
+      <input type="number" id="bulk-count" value="10" min="1" max="500"/>
+    </div>
+    <div class="form-group">
+      <label>Prefix tên (tùy chọn)</label>
+      <input type="text" id="bulk-prefix" placeholder="VD: acc_ → acc_001, acc_002..."/>
+    </div>
+    <div class="form-group">
+      <label>Hệ điều hành</label>
+      <select id="bulk-os">
+        <option value="windows">Windows</option>
+        <option value="macos">macOS</option>
+        <option value="linux">Linux</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-bulk-create')">Hủy</button>
+      <button class="btn btn-primary" onclick="bulkCreate()">Tạo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Profile Modal -->
+<div class="overlay" id="modal-edit-profile">
+  <div class="modal">
+    <h3>Chỉnh sửa Profile</h3>
+    <input type="hidden" id="ep-id"/>
+    <div class="form-group">
+      <label>Tên profile</label>
+      <input type="text" id="ep-name"/>
+    </div>
+    <div class="form-group">
+      <label>Hệ điều hành</label>
+      <select id="ep-os">
+        <option value="windows">Windows</option>
+        <option value="macos">macOS</option>
+        <option value="linux">Linux</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Proxy</label>
+      <input type="text" id="ep-proxy" placeholder="socks5://user:pass@host:port"/>
+    </div>
+    <div class="form-group">
+      <label>Ghi chú</label>
+      <input type="text" id="ep-note"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-profile')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveEditProfile()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Proxy Modal -->
+<div class="overlay" id="modal-import-proxy">
+  <div class="modal" style="max-width:480px;">
+    <h3>➕ Import Proxy</h3>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Mỗi dòng một proxy, định dạng <code>host:port</code></p>
+    <div class="form-group">
+      <label>Danh sách proxy</label>
+      <textarea id="import-proxy-text" rows="10" placeholder="1.2.3.4:1080&#10;5.6.7.8:1080&#10;..." style="font-family:monospace;font-size:.82rem;resize:vertical;"></textarea>
+    </div>
+    <div id="import-proxy-status" style="font-size:.78rem;color:var(--muted);margin-bottom:8px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-import-proxy')">Hủy</button>
+      <button class="btn btn-primary" onclick="doImportProxies()">Import</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ===================== STATE =====================
+let profiles = [];
+let scripts = [];
+let selectedProfileIds = new Set();
+let autoSelectedProfileIds = new Set();
+let selectedScriptId = null;
+let logPollers = {}; // taskId -> intervalId
+let allTaskIds = [];
+let currentTab = 'profiles';
+
+// ===================== INIT =====================
+document.addEventListener('DOMContentLoaded', () => {
+  loadProfiles();
+  loadScripts();
+  loadProxies();
+  loadQueue();
+  startLogsPoller();
+});
+
+// ===================== TABS =====================
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const names = ['profiles','automation','logs','proxy'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if(name==='logs') loadLogs();
+  if(name==='profiles') loadProfiles();
+  if(name==='automation') { loadProfiles().then(()=>{ renderAutoProfileList(); refreshAutoSummary(); }); }
+}
+
+function switchSubTab(group, name) {
+  const parent = document.getElementById('page-automation');
+  parent.querySelectorAll('.sub-tab').forEach((t,i)=>{
+    const names = ['config','data'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  parent.querySelectorAll('.sub-page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('auto-'+name).classList.add('active');
+  if(name==='config') { renderAutoProfileList(); refreshAutoSummary(); }
+  if(name==='data') { loadQueue(); refreshAutoSummary(); }
+}
+
+// ===================== PROFILES =====================
+async function loadProfiles() {
+  try {
+    const r = await fetch('/api/profiles');
+    profiles = await r.json();
+    renderProfiles();
+    renderAutoProfileList();
+    document.getElementById('hdr-profile-count').textContent = profiles.length + ' profiles';
+  } catch(e) { showToast('Lỗi tải profiles: '+e.message,'err'); }
+}
+
+function renderProfiles() {
+  const search = (document.getElementById('search-profile').value||'').toLowerCase();
+  const tbody = document.getElementById('profile-tbody');
+  const filtered = profiles.filter(p => p.name.toLowerCase().includes(search));
+
+  if(!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>Chưa có profile nào.</p></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(p => {
+    const checked = selectedProfileIds.has(p.id) ? 'checked' : '';
+    // Proxy: lấy địa chỉ từ proxy_server (socks5://host:port)
+    let proxyCell = '<span style="color:var(--muted);font-size:.75rem;">—</span>';
+    if (p.proxy_server) {
+      const m = p.proxy_server.match(/\/\/([^:]+):(\d+)/);
+      const host = m ? m[1] : p.proxy_server;
+      const port = m ? m[2] : '';
+      proxyCell = `<span style="color:var(--accent2);font-size:.75rem;" title="${esc(p.proxy_server)}">${esc(host)}:${port}</span>`;
+    }
+    const seedCell = p.seed != null
+      ? `<code style="font-size:.72rem;">${p.seed}</code>`
+      : `<span style="color:var(--muted);">—</span>`;
+    const tzCell = p.timezone
+      ? `<span style="font-size:.72rem;color:var(--text);">${esc(p.timezone)}</span>`
+      : `<span style="color:var(--muted);">—</span>`;
+    const status = p.status || 'stopped';
+    return `<tr>
+      <td><input type="checkbox" ${checked} onchange="toggleProfileSelect('${p.id}',this.checked)" style="accent-color:var(--accent);width:15px;height:15px;"/></td>
+      <td><span style="font-weight:700;">${esc(p.name)}</span>${p.note?'<div style="font-size:.72rem;color:var(--muted);">'+esc(p.note)+'</div>':''}</td>
+      <td>${proxyCell}</td>
+      <td>${seedCell}</td>
+      <td>${tzCell}</td>
+      <td><span class="badge badge-${status}">${status}</span></td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="launchProfile('${p.id}')" ${status==='running'?'disabled':''} style="min-width:52px">${status==='running'?'Đang chạy':'▶ Mở'}</button>
+        ${status==='running'?`<button class="btn btn-warn btn-sm" onclick="stopProfile('${p.id}')">■ Stop</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="openEditProfile('${p.id}')">Sửa</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteProfile('${p.id}')">Xóa</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  updateSelectBar();
+}
+
+function toggleProfileSelect(id, checked) {
+  if(checked) selectedProfileIds.add(id);
+  else selectedProfileIds.delete(id);
+  updateSelectBar();
+}
+
+function toggleSelectAll(el) {
+  const search = (document.getElementById('search-profile').value||'').toLowerCase();
+  const filtered = profiles.filter(p => p.name.toLowerCase().includes(search));
+  filtered.forEach(p => {
+    if(el.checked) selectedProfileIds.add(p.id);
+    else selectedProfileIds.delete(p.id);
+  });
+  renderProfiles();
+}
+
+function updateSelectBar() {
+  const n = selectedProfileIds.size;
+  document.getElementById('selected-count').textContent = n;
+  document.getElementById('btn-delete-selected').disabled = n === 0;
+  document.getElementById('btn-bulk-assign-proxy').disabled = n === 0;
+}
+
+async function deleteSelected() {
+  if(!selectedProfileIds.size) return;
+  if(!confirm(`Xóa ${selectedProfileIds.size} profile?`)) return;
+  for(const id of [...selectedProfileIds]) {
+    await fetch('/api/profiles/'+id, {method:'DELETE'});
+  }
+  selectedProfileIds.clear();
+  showToast('Đã xóa profile','ok');
+  loadProfiles();
+}
+
+async function deleteProfile(id) {
+  if(!confirm('Xóa profile này?')) return;
+  await fetch('/api/profiles/'+id, {method:'DELETE'});
+  selectedProfileIds.delete(id);
+  showToast('Đã xóa','ok');
+  loadProfiles();
+}
+
+async function launchProfile(id) {
+  const r = await fetch('/api/profiles/'+id+'/launch', {method:'POST'});
+  const d = await r.json();
+  if(r.ok) {
+    showToast('Đã mở profile','ok');
+    loadProfiles();
+  } else {
+    showToast('Lỗi: '+(d.error||d.detail||r.status),'err');
+  }
+}
+
+async function stopProfile(id) {
+  const r = await fetch('/api/profiles/'+id+'/stop', {method:'POST'});
+  if(r.ok) {
+    showToast('Đã stop profile','ok');
+    loadProfiles();
+  } else {
+    showToast('Lỗi stop','err');
+  }
+}
+
+// Country → Timezone mapping
+const COUNTRY_TZ = {
+  'US':'America/New_York','CA':'America/Toronto','GB':'Europe/London','DE':'Europe/Berlin',
+  'FR':'Europe/Paris','NL':'Europe/Amsterdam','SE':'Europe/Stockholm','NO':'Europe/Oslo',
+  'FI':'Europe/Helsinki','PL':'Europe/Warsaw','IT':'Europe/Rome','ES':'Europe/Madrid',
+  'PT':'Europe/Lisbon','CH':'Europe/Zurich','AT':'Europe/Vienna','BE':'Europe/Brussels',
+  'DK':'Europe/Copenhagen','CZ':'Europe/Prague','HU':'Europe/Budapest','RO':'Europe/Bucharest',
+  'UA':'Europe/Kiev','TR':'Europe/Istanbul','RU':'Europe/Moscow','JP':'Asia/Tokyo',
+  'KR':'Asia/Seoul','CN':'Asia/Shanghai','HK':'Asia/Hong_Kong','SG':'Asia/Singapore',
+  'TH':'Asia/Bangkok','VN':'Asia/Ho_Chi_Minh','ID':'Asia/Jakarta','MY':'Asia/Kuala_Lumpur',
+  'IN':'Asia/Kolkata','PH':'Asia/Manila','TW':'Asia/Taipei','AU':'Australia/Sydney',
+  'NZ':'Pacific/Auckland','BR':'America/Sao_Paulo','MX':'America/Mexico_City',
+  'AR':'America/Argentina/Buenos_Aires','CL':'America/Santiago','CO':'America/Bogota',
+  'ZA':'Africa/Johannesburg','NG':'Africa/Lagos','EG':'Africa/Cairo','IL':'Asia/Jerusalem',
+  'SA':'Asia/Riyadh','AE':'Asia/Dubai','PK':'Asia/Karachi','BD':'Asia/Dhaka',
+};
+
+function onCreateProxyChange() {
+  const sel = document.getElementById('cp-proxy-select');
+  const tzDiv = document.getElementById('cp-proxy-tz');
+  const manualWrap = document.getElementById('cp-manual-proxy-wrap');
+  const val = sel.value;
+  if(!val) {
+    tzDiv.style.display='none';
+    manualWrap.style.display='none';
+    return;
+  }
+  if(val === '__manual__') {
+    manualWrap.style.display='block';
+    tzDiv.style.display='none';
+    return;
+  }
+  manualWrap.style.display='none';
+  try {
+    const px = JSON.parse(val);
+    if(px.country) {
+      const tz = COUNTRY_TZ[px.country] || 'America/New_York';
+      tzDiv.textContent = `Timezone: ${tz}  ·  Country: ${px.country}`;
+      tzDiv.style.display='block';
+    } else {
+      tzDiv.style.display='none';
+    }
+  } catch(e) { tzDiv.style.display='none'; }
+}
+
+function populateCreateProxyDropdown() {
+  const sel = document.getElementById('cp-proxy-select');
+  if(!sel) return;
+  const curr = sel.value;
+  sel.innerHTML = '<option value="">— Không dùng proxy —</option><option value="__manual__">✏️ Nhập thủ công SOCKS5...</option>';
+  (window._proxyList||[]).forEach(px => {
+    const statusIcon = px.alive===true?' 🟢':px.alive===false?' 🔴':'';
+    const label = `${px.host||'?'}:${px.port||''}${statusIcon} (used:${px.used_count||0})`;
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify({server:`socks5://${px.host}:${px.port}`, username:'', password:''});
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  if(curr) sel.value = curr;
+  onCreateProxyChange();
+}
+
+async function createProfile() {
+  const name = document.getElementById('cp-name').value.trim();
+  if(!name) { showToast('Nhập tên profile','err'); return; }
+  const selVal = document.getElementById('cp-proxy-select').value;
+  let proxy_server=null, proxy_username=null, proxy_password=null, timezone=null;
+  if(selVal === '__manual__') {
+    const raw = document.getElementById('cp-manual-host').value.trim();
+    if(!raw) { showToast('Nhập host:port proxy','err'); return; }
+    // Normalize: nếu chưa có protocol thì thêm socks5://
+    proxy_server = raw.startsWith('socks5://') || raw.startsWith('socks4://') || raw.startsWith('http://')
+      ? raw
+      : `socks5://${raw}`;
+    proxy_username = document.getElementById('cp-manual-user').value.trim() || null;
+    proxy_password = document.getElementById('cp-manual-pass').value.trim() || null;
+    timezone = null; // không biết country nên để null, server tự xử lý
+  } else if(selVal) {
+    try {
+      const px = JSON.parse(selVal);
+      proxy_server = px.server;
+      proxy_username = px.username || null;
+      proxy_password = px.password || null;
+      timezone = px.country ? (COUNTRY_TZ[px.country] || 'America/New_York') : null;
+    } catch(e) {}
+  }
+  const body = { name, proxy_server, proxy_username, proxy_password, timezone };
+  const r = await fetch('/api/profiles', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok) {
+    closeModal('modal-create-profile');
+    document.getElementById('cp-name').value='';
+    document.getElementById('cp-proxy-select').value='';
+    document.getElementById('cp-proxy-tz').style.display='none';
+    document.getElementById('cp-manual-proxy-wrap').style.display='none';
+    document.getElementById('cp-manual-host').value='';
+    document.getElementById('cp-manual-user').value='';
+    document.getElementById('cp-manual-pass').value='';
+    document.getElementById('cp-note').value='';
+    showToast('Tạo profile thành công','ok');
+    loadProfiles();
+  } else {
+    const e = await r.json();
+    showToast('Lỗi: '+(e.error||r.status),'err');
+  }
+}
+
+async function bulkCreate() {
+  const count = parseInt(document.getElementById('bulk-count').value)||10;
+  const prefix = document.getElementById('bulk-prefix').value.trim();
+  const os = document.getElementById('bulk-os').value;
+  const btn = event.target;
+  btn.disabled=true; btn.textContent='Đang tạo...';
+  const r = await fetch('/api/profiles/bulk', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({count, prefix, os})
+  });
+  btn.disabled=false; btn.textContent='Tạo';
+  if(r.ok) {
+    const d = await r.json();
+    closeModal('modal-bulk-create');
+    showToast(`Đã tạo ${d.created} profiles`,'ok');
+    loadProfiles();
+  } else {
+    const e = await r.json();
+    showToast('Lỗi: '+(e.error||r.status),'err');
+  }
+}
+
+async function bulkAssignProxy() {
+  if(!selectedProfileIds.size) return;
+  if(!confirm(`Gán proxy ngẫu nhiên cho ${selectedProfileIds.size} profile?`)) return;
+  const r = await fetch('/api/profiles/bulk-assign-proxy', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({profile_ids: [...selectedProfileIds]})
+  });
+  const d = await r.json();
+  if(r.ok) {
+    showToast(`Đã gán proxy cho ${d.assigned} profiles`,'ok');
+    loadProfiles();
+  } else {
+    showToast('Lỗi: '+(d.error||r.status),'err');
+  }
+}
+
+function openEditProfile(id) {
+  const p = profiles.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('ep-id').value = p.id;
+  document.getElementById('ep-name').value = p.name;
+  document.getElementById('ep-os').value = p.os||'windows';
+  document.getElementById('ep-proxy').value = p.proxy||'';
+  document.getElementById('ep-note').value = p.note||'';
+  openModal('modal-edit-profile');
+}
+
+async function saveEditProfile() {
+  const id = document.getElementById('ep-id').value;
+  const body = {
+    name: document.getElementById('ep-name').value.trim(),
+    os: document.getElementById('ep-os').value,
+    proxy: document.getElementById('ep-proxy').value.trim() || null,
+    note: document.getElementById('ep-note').value.trim()
+  };
+  const r = await fetch('/api/profiles/'+id, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok) {
+    closeModal('modal-edit-profile');
+    showToast('Đã lưu','ok');
+    loadProfiles();
+  } else {
+    showToast('Lỗi lưu profile','err');
+  }
+}
+
+// ===================== SCRIPTS =====================
+async function loadScripts() {
+  try {
+    const r = await fetch('/api/scripts');
+    scripts = await r.json();
+    renderScripts();
+  } catch(e) {}
+}
+
+function renderScripts() {
+  const el = document.getElementById('script-list');
+  if(!scripts.length) {
+    el.innerHTML = '<div class="empty-state"><p>Không có script nào.</p><p>Thêm file .py vào thư mục scripts/</p></div>';
+    return;
+  }
+  el.innerHTML = scripts.map(s=>`
+    <div class="script-card ${selectedScriptId===s.id?'active':''}" onclick="selectScript('${s.id}')">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1">
+          <h4>${esc(s.name)}</h4>
+          <p>${esc(s.description||'Không có mô tả')}</p>
+          <span class="script-tag">${esc(s.id)}</span>
+        </div>
+        ${selectedScriptId===s.id?'<span style="color:var(--accent2);">✓</span>':''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectScript(id) {
+  selectedScriptId = id;
+  renderScripts();
+  refreshAutoSummary();
+  showToast('Đã chọn script: '+id,'ok');
+}
+
+// ===================== AUTO PROFILES LIST =====================
+function renderAutoProfileList() {
+  const el = document.getElementById('auto-profile-list');
+  if(!profiles.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px;"><p>Chưa có profile.</p></div>';
+    return;
+  }
+  el.innerHTML = profiles.map(p=>`
+    <div class="profile-checkbox-item" onclick="toggleAutoProfile('${p.id}')">
+      <input type="checkbox" id="ap-${p.id}" ${autoSelectedProfileIds.has(p.id)?'checked':''} onclick="event.stopPropagation();toggleAutoProfile('${p.id}')"/>
+      <div style="flex:1">
+        <div class="pname">${esc(p.name)}</div>
+        <div class="pmeta">${p.proxy_server ? '🔒 proxy ✓' : 'no proxy'} · tz: ${p.timezone||'?'}</div>
+      </div>
+      <span class="badge badge-${p.status||'stopped'}">${p.status||'stopped'}</span>
+    </div>
+  `).join('');
+  updateAutoCount();
+}
+
+function toggleAutoProfile(id) {
+  if(autoSelectedProfileIds.has(id)) autoSelectedProfileIds.delete(id);
+  else autoSelectedProfileIds.add(id);
+  document.getElementById('ap-'+id).checked = autoSelectedProfileIds.has(id);
+  updateAutoCount();
+  refreshAutoSummary();
+}
+
+function autoSelectAll(select) {
+  profiles.forEach(p => {
+    if(select) autoSelectedProfileIds.add(p.id);
+    else autoSelectedProfileIds.delete(p.id);
+  });
+  renderAutoProfileList();
+  refreshAutoSummary();
+}
+
+function updateAutoCount() {
+  document.getElementById('auto-selected-count').textContent = autoSelectedProfileIds.size;
+}
+
+function refreshAutoSummary() {
+  const s = scripts.find(x=>x.id===selectedScriptId);
+  const nm = s ? s.name : '— chưa chọn';
+  const cnt = autoSelectedProfileIds.size;
+  const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('run-script-name', s ? s.name : '— (chưa chọn)');
+  set('run-profiles-summary', cnt + ' profile');
+  set('cfg-script-name', nm);
+  set('cfg-profiles-count', cnt);
+}
+
+// ===================== QUEUE =====================
+async function loadQueue() {
+  try {
+    const r = await fetch('/api/queue');
+    const d = await r.json();
+    const total = (d.rows||[]).length;
+    document.getElementById('queue-count-badge').textContent = total + ' hàng';
+    document.getElementById('queue-count-badge').className = 'badge '+(total>0?'badge-queued':'badge-stopped');
+  } catch(e){}
+}
+
+async function pushToQueue() {
+  const raw = document.getElementById('queue-input').value.trim();
+  if(!raw) { showToast('Nhập dữ liệu trước','err'); return; }
+  let rows = [];
+  try {
+    const parsed = JSON.parse(raw);
+    rows = Array.isArray(parsed) ? parsed : [parsed];
+  } catch(_) {
+    rows = raw.split('\n').filter(l=>l.trim()).map(l=>({raw:l.trim()}));
+  }
+  const r = await fetch('/api/queue', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({rows})
+  });
+  if(r.ok) {
+    const d = await r.json();
+    showToast(`Đã thêm ${d.added} bản ghi vào queue`,'ok');
+    document.getElementById('queue-input').value='';
+    loadQueue();
+  } else {
+    showToast('Lỗi push queue','err');
+  }
+}
+
+async function clearQueue() {
+  if(!confirm('Xóa toàn bộ queue?')) return;
+  await fetch('/api/queue', {method:'DELETE'});
+  showToast('Đã xóa queue','ok');
+  loadQueue();
+}
+
+// ===================== RUN =====================
+async function runMulti() {
+  if(!selectedScriptId) { showToast('Chưa chọn script','err'); switchSubTab('auto','config'); return; }
+  if(!autoSelectedProfileIds.size) { showToast('Chưa chọn profile','err'); switchSubTab('auto','config'); return; }
+
+  const btn = document.getElementById('btn-run-multi');
+  btn.disabled=true; btn.textContent='Đang khởi động...';
+
+  const r = await fetch('/api/tasks/run-multi', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      profile_ids: [...autoSelectedProfileIds],
+      script_id: selectedScriptId
+    })
+  });
+  btn.disabled=false; btn.textContent='▶ Chạy tất cả profiles đã chọn';
+
+  if(r.ok) {
+    const d = await r.json();
+    showToast(`Đã khởi động ${d.started} tasks`,'ok');
+    switchTab('logs');
+  } else {
+    const e = await r.json();
+    showToast('Lỗi: '+(e.error||r.status),'err');
+  }
+}
+
+async function stopAll() {
+  if(!confirm('Dừng tất cả tasks đang chạy?')) return;
+  const r = await fetch('/api/tasks/stop-all', {method:'POST'});
+  const d = await r.json();
+  showToast(`Đã gửi stop đến ${d.stopped} tasks`,'ok');
+  setTimeout(loadLogs, 1000);
+}
+
+// ===================== LOGS =====================
+let logsInterval = null;
+
+function startLogsPoller() {
+  if(logsInterval) clearInterval(logsInterval);
+  logsInterval = setInterval(()=>{
+    if(currentTab==='logs') loadLogs();
+  }, 2000);
+}
+
+async function loadLogs() {
+  try {
+    const r = await fetch('/api/tasks');
+    const tasks = await r.json();
+    renderLogs(tasks);
+  } catch(e){}
+}
+
+function renderLogs(tasks) {
+  const el = document.getElementById('logs-grid');
+  if(!tasks || !tasks.length) {
+    el.innerHTML = `<div class="empty-state"><p>Chưa có task nào đang chạy.</p><p style="margin-top:6px;font-size:.8rem;">Chạy automation từ tab <strong>Automation</strong> để xem logs ở đây.</p></div>`;
+    return;
+  }
+  el.innerHTML = tasks.map(t => {
+    const profile = profiles.find(p=>p.id===t.profile_id)||{name: t.profile_id||t.id};
+    const logs = (t.logs||[]).slice(-50);
+    const logsHtml = logs.length
+      ? logs.map(l=>formatLogLine(l)).join('')
+      : '<span style="color:var(--muted);">Chưa có log...</span>';
+
+    const rowInfo = t.row ? (t.row.raw || JSON.stringify(t.row).slice(0,60)) : '';
+
+    return `<div class="log-card" id="log-card-${t.id}">
+      <div class="log-card-head">
+        <span class="pname">${esc(profile.name)}</span>
+        ${rowInfo?`<span class="row-info">· ${esc(rowInfo)}</span>`:''}
+        <div class="spacer"></div>
+        <span class="badge badge-${t.status}">${t.status}</span>
+        ${['running','starting','queued'].includes(t.status)
+          ? `<button class="btn btn-danger btn-sm" onclick="stopTask('${t.id}')">Stop</button>`
+          : ''}
+      </div>
+      <div class="log-card-body" id="log-body-${t.id}">${logsHtml}</div>
+    </div>`;
+  }).join('');
+
+  // auto scroll each log body
+  tasks.forEach(t => {
+    const el = document.getElementById('log-body-'+t.id);
+    if(el) el.scrollTop = el.scrollHeight;
+  });
+}
+
+function formatLogLine(line) {
+  const s = typeof line === 'string' ? line : JSON.stringify(line);
+  let cls = '';
+  if(/error|lỗi|fail|exception/i.test(s)) cls='err';
+  else if(/warn|cảnh báo/i.test(s)) cls='warn';
+  else if(/✓|success|done|ok|thành công/i.test(s)) cls='ok';
+  else if(/info|\[/i.test(s)) cls='info';
+  return `<div class="log-line ${cls}">${esc(s)}</div>`;
+}
+
+async function stopTask(taskId) {
+  const r = await fetch('/api/tasks/'+taskId+'/stop', {method:'POST'});
+  if(r.ok) showToast('Đã gửi lệnh stop','ok');
+  else showToast('Lỗi stop task','err');
+}
+
+// ===================== PROXY =====================
+function fmtProxyStatus(p) {
+  if(p.alive === true)  return '<span style="color:#4ade80;">🟢 live</span>';
+  if(p.alive === false) return '<span style="color:#f87171;">🔴 dead</span>';
+  return '<span style="color:var(--muted);">⚪ —</span>';
+}
+function fmtDate(s) {
+  if(!s) return '—';
+  try { return new Date(s).toLocaleString('vi-VN',{hour12:false,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+  catch{ return s; }
+}
+
+async function loadProxies() {
+  try {
+    const r = await fetch('/api/proxies');
+    const d = await r.json();
+    const proxies = Array.isArray(d.proxies) ? d.proxies : (Array.isArray(d) ? d : []);
+    window._proxyList = proxies;
+    const cnt = proxies.length;
+    document.getElementById('proxy-total').textContent = `Tổng: ${cnt} proxy`;
+    document.getElementById('hdr-proxy-count').textContent = cnt + ' proxies';
+    const tbody = document.getElementById('proxy-tbody');
+    if(!proxies.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">Chưa có proxy. Nhấn ➕ Import để thêm.</td></tr>';
+      populateCreateProxyDropdown();
+      return;
+    }
+    tbody.innerHTML = proxies.map((p,i)=>`
+      <tr id="proxy-row-${p.id}">
+        <td style="color:var(--muted);font-size:.75rem;">${i+1}</td>
+        <td style="font-family:monospace;font-size:.82rem;">${esc(p.host)}:${p.port}</td>
+        <td>${fmtProxyStatus(p)}</td>
+        <td style="font-size:.82rem;">${p.ping_ms != null ? p.ping_ms+'ms' : '—'}</td>
+        <td style="font-family:monospace;font-size:.78rem;color:var(--muted);">${esc(p.last_ip||'—')}</td>
+        <td style="font-size:.82rem;text-align:center;">${p.used_count||0}</td>
+        <td style="font-size:.75rem;color:var(--muted);">${fmtDate(p.added_at)}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" style="padding:2px 7px;font-size:.72rem;" onclick="checkOneProxy('${p.id}')">⚡</button>
+          <button class="btn btn-warn btn-sm" style="padding:2px 7px;font-size:.72rem;" onclick="deleteProxy('${p.id}')">🗑</button>
+        </td>
+      </tr>`).join('');
+    populateCreateProxyDropdown();
+  } catch(e){ showToast('Lỗi tải proxies','err'); }
+}
+
+async function doImportProxies() {
+  const raw = document.getElementById('import-proxy-text').value.trim();
+  if(!raw){ showToast('Nhập ít nhất 1 proxy','err'); return; }
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  const statusEl = document.getElementById('import-proxy-status');
+  statusEl.textContent = `Đang import ${lines.length} proxy...`;
+  const r = await fetch('/api/proxies/import', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines: lines.join('\n')})});
+  const d = await r.json().catch(()=>({}));
+  if(r.ok) {
+    statusEl.textContent = '';
+    closeModal('modal-import-proxy');
+    document.getElementById('import-proxy-text').value = '';
+    const skipped = lines.length - (d.added||0);
+    showToast(`Đã thêm ${d.added||0} proxy${skipped>0?' (bỏ qua '+skipped+' trùng/lỗi)':''}`,'ok');
+    loadProxies();
+  } else {
+    statusEl.textContent = 'Lỗi: '+(d.detail||d.error||r.status);
+    statusEl.style.color = '#f87171';
+  }
+}
+
+async function checkOneProxy(id) {
+  const btn = document.querySelector(`#proxy-row-${id} button`);
+  if(btn) btn.textContent = '...';
+  const r = await fetch(`/api/proxies/${id}/check`, {method:'POST'});
+  const d = await r.json().catch(()=>({}));
+  if(r.ok) {
+    showToast(d.ok ? `🟢 Live — ${d.ping_ms}ms — ${d.ip}` : '🔴 Dead','ok');
+    loadProxies();
+  } else showToast('Lỗi check proxy','err');
+}
+
+let _checkAllTimer = null;
+async function checkAllProxies() {
+  const r = await fetch('/api/proxies/check-all', {method:'POST'});
+  if(!r.ok){ showToast('Lỗi check all','err'); return; }
+  const d = await r.json().catch(()=>({}));
+  showToast(`Đang check ${d.checking||''} proxy (tối đa 8 luồng)...`,'ok');
+
+  // Poll tiến độ + refresh bảng dần — không còn dựa vào 1 timeout cứng
+  if(_checkAllTimer) clearInterval(_checkAllTimer);
+  _checkAllTimer = setInterval(async ()=>{
+    try {
+      const sr = await fetch('/api/proxies/check-all/status');
+      const s = await sr.json();
+      loadProxies();
+      if(s.total){
+        showToast(`Check proxy: ${s.done}/${s.total}`,'ok');
+      }
+      if(!s.running){
+        clearInterval(_checkAllTimer); _checkAllTimer=null;
+        loadProxies();
+        showToast('✓ Đã check xong tất cả proxy','ok');
+      }
+    } catch(e){}
+  }, 2500);
+}
+
+async function deleteProxy(id) {
+  const r = await fetch(`/api/proxies/${id}`, {method:'DELETE'});
+  if(r.ok) { showToast('Đã xóa proxy','ok'); loadProxies(); }
+  else showToast('Lỗi xóa proxy','err');
+}
+
+async function clearAllProxies() {
+  if(!confirm('Xóa hết tất cả proxy?')) return;
+  const r = await fetch('/api/proxies', {method:'DELETE'});
+  if(r.ok) { showToast('Đã xóa tất cả proxy','ok'); loadProxies(); }
+  else showToast('Lỗi xóa','err');
+}
+
+// ===================== UTIL =====================
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'modal-create-profile') {
+    populateCreateProxyDropdown();
+  }
+  if (id === 'modal-import-proxy') {
+    document.getElementById('import-proxy-status').textContent = '';
+  }
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('open'); });
+});
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show'+(type?' '+type:'');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), 3500);
+}
+
+function esc(s) {
+  if(s==null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ===================== IMPORT FILE — PREVIEW MODE =====================
+let _previewRows = [];
+let _previewHeaders = [];
+
+async function importFilePreview(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const ext = file.name.split('.').pop().toLowerCase();
+  let rows = [];
+
+  try {
+    if (ext === 'csv') {
+      rows = await parseCSV(file);
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      rows = await parseExcel(file);
+    } else {
+      showToast('Chỉ hỗ trợ .csv, .xlsx, .xls', 'err');
+      return;
+    }
+  } catch(e) {
+    showToast('Lỗi đọc file: ' + e.message, 'err');
+    return;
+  }
+
+  if (!rows.length) { showToast('File không có dữ liệu', 'err'); return; }
+  const headers = Object.keys(rows[0]);
+  showPreviewTable(rows, headers);
+  showToast(`✓ Đọc file thành công: ${rows.length} hàng`, 'ok');
+}
+
+function showPreviewTable(rows, headers) {
+  _previewRows = rows;
+  _previewHeaders = headers;
+
+  // Update info bar
+  const info = document.getElementById('import-preview-info');
+  const badge = document.getElementById('preview-row-count');
+  if (info) info.textContent = `✓ Import thành công: ${rows.length} hàng`;
+  if (badge) badge.textContent = rows.length;
+
+  // Build editable table
+  const wrap = document.getElementById('import-preview-table-wrap');
+  if (!wrap) return;
+
+  let html = '<table class="queue-table" id="preview-data-table"><thead><tr>';
+  html += '<th style="width:32px">#</th>';
+  headers.forEach(h => { html += `<th>${esc(h)}</th>`; });
+  html += '<th style="width:36px"></th></tr></thead><tbody>';
+
+  rows.forEach((row, ri) => {
+    html += `<tr data-ri="${ri}">`;
+    html += `<td style="color:var(--muted);font-size:11px">${ri + 1}</td>`;
+    headers.forEach(h => {
+      const val = row[h] ?? '';
+      html += `<td><input type="text" value="${esc(val)}" data-h="${esc(h)}" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);padding:2px 4px;font-size:12px"></td>`;
+    });
+    html += `<td><button onclick="removePreviewRow(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px" title="Xóa hàng">✕</button></td>`;
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+
+  // Show preview section
+  const previewWrap = document.getElementById('import-preview-wrap');
+  if (previewWrap) previewWrap.style.display = '';
+}
+
+function removePreviewRow(btn) {
+  const tr = btn.closest('tr');
+  if (tr) tr.remove();
+  // Reindex
+  const tbody = document.querySelector('#preview-data-table tbody');
+  if (tbody) {
+    Array.from(tbody.rows).forEach((r, i) => {
+      r.cells[0].textContent = i + 1;
+    });
+    const cnt = tbody.rows.length;
+    const badge = document.getElementById('preview-row-count');
+    const info = document.getElementById('import-preview-info');
+    if (badge) badge.textContent = cnt;
+    if (info) info.textContent = `✓ Import thành công: ${cnt} hàng`;
+  }
+}
+
+function addPreviewRow() {
+  const tbody = document.querySelector('#preview-data-table tbody');
+  if (!tbody || !_previewHeaders.length) {
+    showToast('Chưa có dữ liệu preview', 'err'); return;
+  }
+  const ri = tbody.rows.length;
+  const tr = document.createElement('tr');
+  let html = `<td style="color:var(--muted);font-size:11px">${ri + 1}</td>`;
+  _previewHeaders.forEach(h => {
+    html += `<td><input type="text" value="" data-h="${esc(h)}" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);padding:2px 4px;font-size:12px"></td>`;
+  });
+  html += `<td><button onclick="removePreviewRow(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px" title="Xóa hàng">✕</button></td>`;
+  tr.innerHTML = html;
+  tbody.appendChild(tr);
+
+  const cnt = tbody.rows.length;
+  const badge = document.getElementById('preview-row-count');
+  if (badge) badge.textContent = cnt;
+}
+
+function clearPreview() {
+  const wrap = document.getElementById('import-preview-wrap');
+  if (wrap) wrap.style.display = 'none';
+  const tableWrap = document.getElementById('import-preview-table-wrap');
+  if (tableWrap) tableWrap.innerHTML = '';
+  const info = document.getElementById('import-preview-info');
+  if (info) info.textContent = '';
+  const badge = document.getElementById('preview-row-count');
+  if (badge) badge.textContent = '0';
+  _previewRows = [];
+  _previewHeaders = [];
+}
+
+async function pushPreviewToQueue() {
+  const tbody = document.querySelector('#preview-data-table tbody');
+  if (!tbody || !tbody.rows.length) {
+    showToast('Không có dữ liệu để đẩy', 'err'); return;
+  }
+
+  const rows = [];
+  Array.from(tbody.rows).forEach(tr => {
+    const inputs = tr.querySelectorAll('input[data-h]');
+    if (!inputs.length) return;
+    const obj = {};
+    inputs.forEach(inp => { obj[inp.dataset.h] = inp.value; });
+    rows.push(obj);
+  });
+
+  if (!rows.length) { showToast('Không có dữ liệu', 'err'); return; }
+
+  const btn = document.getElementById('btn-push-preview');
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang đẩy...'; }
+
+  try {
+    const r = await fetch('/api/queue', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({rows})
+    });
+    if (r.ok) {
+      const d = await r.json();
+      showToast(`✓ Đã đẩy ${d.added} hàng vào queue`, 'ok');
+      clearPreview();
+      loadQueue();
+    } else {
+      const e = await r.json().catch(()=>({}));
+      showToast('Lỗi: ' + (e.error || 'push queue thất bại'), 'err');
+    }
+  } catch(e) {
+    showToast('Lỗi kết nối: ' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Đẩy vào queue'; }
+  }
+}
+
+function toggleManualInput() {
+  const wrap = document.getElementById('manual-input-wrap');
+  if (!wrap) return;
+  const visible = wrap.style.display !== 'none' && wrap.style.display !== '';
+  wrap.style.display = visible ? 'none' : '';
+}
+
+function parseManualInput() {
+  const ta = document.getElementById('queue-input');
+  if (!ta) return;
+  const text = ta.value.trim();
+  if (!text) { showToast('Textarea trống', 'err'); return; }
+
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { showToast('Không có dữ liệu', 'err'); return; }
+
+  // Detect if first line looks like headers (contains letters, no pure numbers)
+  const first = lines[0];
+  const delim = first.includes('\t') ? '\t' : first.includes('|') ? '|' : first.includes(',') ? ',' : null;
+
+  let rows = [];
+  let headers = [];
+
+  if (delim) {
+    const cols = first.split(delim).map(c => c.trim().replace(/^"|"$/g,''));
+    const isHeader = cols.length > 1 && isNaN(cols[0]) && cols[0] !== '';
+    if (isHeader) {
+      headers = cols;
+      lines.slice(1).forEach(line => {
+        const vals = line.split(delim).map(c => c.trim().replace(/^"|"$/g,''));
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+        rows.push(obj);
+      });
+    } else {
+      headers = cols.map((_, i) => `col${i+1}`);
+      lines.forEach(line => {
+        const vals = line.split(delim).map(c => c.trim().replace(/^"|"$/g,''));
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+        rows.push(obj);
+      });
+    }
+  } else {
+    headers = ['data'];
+    lines.forEach(line => { rows.push({data: line}); });
+  }
+
+  showPreviewTable(rows, headers);
+  showToast(`✓ Parse thành công: ${rows.length} hàng`, 'ok');
+}
+
+function parseCSV(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        if (!lines.length) return resolve([]);
+
+        // Detect delimiter: tab hoặc comma hoặc pipe
+        const first = lines[0];
+        const delim = first.includes('\t') ? '\t' : first.includes('|') ? '|' : ',';
+
+        const headers = first.split(delim).map(h => h.trim().replace(/^"|"$/g,''));
+        const isHeader = headers.length > 1 && isNaN(headers[0]) && headers[0] !== '';
+
+        let rows = [];
+        const dataLines = isHeader ? lines.slice(1) : lines;
+        dataLines.forEach(line => {
+          if (!line) return;
+          const cols = line.split(delim).map(c => c.trim().replace(/^"|"$/g,''));
+          if (isHeader) {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = cols[i] ?? ''; });
+            rows.push(obj);
+          } else {
+            // Không có header: dùng raw string
+            rows.push({data: cols.join(delim)});
+          }
+        });
+        resolve(rows);
+      } catch(e) { reject(e); }
+    };
+    reader.onerror = () => reject(new Error('Không đọc được file'));
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function parseExcel(file) {
+  return new Promise((resolve, reject) => {
+    // Load SheetJS dynamically if not loaded
+    const load = (cb) => {
+      if (window.XLSX) return cb();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = cb;
+      s.onerror = () => reject(new Error('Không load được thư viện Excel'));
+      document.head.appendChild(s);
+    };
+    load(() => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(e.target.result, {type: 'array'});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(ws, {defval: ''});
+          resolve(json);
+        } catch(e) { reject(e); }
+      };
+      reader.onerror = () => reject(new Error('Không đọc được file'));
+      reader.readAsArrayBuffer(file);
+    });
+  });
+}
+</script>
+</body>
+</html>
