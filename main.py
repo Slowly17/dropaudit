@@ -30,15 +30,26 @@ def load_declined():
             pass
     return {"records": []}
 
-def save_declined_record(email: str, card: str, reason: str, cardholder: str = ""):
+def save_declined_record(email: str, card: str, reason: str, cardholder: str = "",
+                         password: str = "", exp_month: str = "", exp_year: str = "",
+                         cvv: str = "", address: str = "", city: str = "",
+                         state: str = "", zip_code: str = ""):
     """Thêm 1 record declined vào declined_results.json (thread-safe với GIL)."""
     d = load_declined()
     d["records"].append({
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "email":     email,
-        "card":      card,
+        "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
+        "email":      email,
+        "password":   password,
+        "card":       card,
+        "exp_month":  exp_month,
+        "exp_year":   exp_year,
+        "cvv":        cvv,
         "cardholder": cardholder,
-        "reason":    reason,
+        "address":    address,
+        "city":       city,
+        "state":      state,
+        "zip":        zip_code,
+        "reason":     reason,
     })
     DECLINED_FILE.write_text(json.dumps(d, indent=2))
 
@@ -1399,7 +1410,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               _dec_card   = card_number
                               log(f"[{idx+1}] 📝 Ghi declined: {email} | {_dec_card[:4]}**** (thẻ {_cards_tried}/3)")
                               try:
-                                  save_declined_record(email, _dec_card, _dec_reason, cardholder_name)
+                                  save_declined_record(
+                                      email, _dec_card, _dec_reason, cardholder_name,
+                                      password=password,
+                                      exp_month=exp_month, exp_year=exp_year,
+                                      cvv=cvv, address=address,
+                                      city=city, state=state, zip_code=zip_code
+                                  )
                               except Exception as _de:
                                   log(f"[{idx+1}] ⚠ Lỗi ghi declined: {_de}")
                               # ── Đánh dấu card row declined trong queue ──
