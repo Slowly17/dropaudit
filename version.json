@@ -1,5 +1,5 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "updated": "2026-06-19",
-  "notes": "Lay card 2/3 tu queue -> xoa mail/pass row do ngay (danh dau consumed), khong dung lai"
+  "notes": "Fix: sau F5 (page.reload) reset _card_loc=None + wait domcontentloaded+3s de Stripe hydrate truoc khi dien card"
 }

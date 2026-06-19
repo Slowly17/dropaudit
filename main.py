@@ -1430,7 +1430,12 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   # Chỉ lấy thông tin card từ row mới, email/pass giữ nguyên
                                   _current_card_row = _next_row
                                   log(f"[{idx+1}] ➡ Thẻ {_cards_tried+1}/3: {_next_row.get('card_number','')[:4]}**** — F5 Stripe")
-                                  page.reload()
+                                  try:
+                                      page.reload(wait_until="domcontentloaded", timeout=30000)
+                                  except Exception:
+                                      pass
+                                  page.wait_for_timeout(3000)  # chờ Stripe JS hydrate
+                                  _card_loc = None  # reset stale locator
                                   continue  # reload + điền thẻ mới, KHÔNG signup lại
                               else:
                                   log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
@@ -1440,7 +1445,12 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           if _payment_failed:
                               if _pay_retry < 2:
                                   log(f"[{idx+1}] 🔄 F5 reload Stripe để retry ({_pay_retry+1}/3)...")
-                                  page.reload()
+                                  try:
+                                      page.reload(wait_until="domcontentloaded", timeout=30000)
+                                  except Exception:
+                                      pass
+                                  page.wait_for_timeout(3000)  # chờ Stripe JS hydrate
+                                  _card_loc = None  # reset stale locator
                                   continue
                               else:
                                   log(f"[{idx+1}] ❌ Thanh toán thất bại sau 3 lần — dừng")
