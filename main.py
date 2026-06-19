@@ -1358,9 +1358,14 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               break
 
                           if _card_declined:
-                              log(f"[{idx+1}] ⏹ Thẻ bị decline — dừng, browser giữ nguyên")
-                              _keep_alive.wait()
-                              break
+                              if _pay_retry < 2:
+                                  log(f"[{idx+1}] 🔄 Thẻ declined sau 'I'm Human' → F5 điền lại ({_pay_retry+1}/3)...")
+                                  page.reload()
+                                  continue  # reload → điền lại card từ đầu
+                              else:
+                                  log(f"[{idx+1}] ❌ Thẻ bị decline sau 3 lần → dừng, browser giữ nguyên")
+                                  _keep_alive.wait()
+                                  break
 
                           if _payment_failed:
                               if _pay_retry < 2:
