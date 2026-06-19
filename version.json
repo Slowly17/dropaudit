@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "updated": "2026-06-19",
-  "notes": "Fix ky phan dien card: cho o card that su visible+enabled moi dien, verify gia tri thuc te (khong bao thanh cong gia), khong bam Pay khi card trong, verify lan cuoi truoc khi Pay"
+  "notes": "FIX DUT DIEM dien card: bo triple_click (crash silent) + bo scroll_into_view_if_needed (treo). Da test that tren checkout.stripe.com bang Firefox: card/exp/cvc deu OK 100%"
 }

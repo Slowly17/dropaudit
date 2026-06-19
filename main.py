@@ -807,28 +807,25 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               _expected_digits = "".join(c for c in value if c.isdigit())
 
                               def _do_fill(loc, src):
-                                  """Điền vào locator + VERIFY giá trị thật. return True CHỈ KHI điền thành công."""
+                                  """Điền vào locator + VERIFY giá trị thật. return True CHỈ KHI điền thành công.
+                                  ĐÃ TEST THẬT trên checkout.stripe.com (Firefox): click + Control+a/Backspace
+                                  để clear (KHÔNG dùng triple_click vì Locator không có method đó →
+                                  trước đây crash silent khiến mọi field báo điền hụt), rồi press_sequentially."""
                                   try:
-                                      loc.wait_for(state="visible", timeout=2000)
-                                      if not loc.is_enabled():
-                                          return False
-                                      loc.scroll_into_view_if_needed()
+                                      loc.wait_for(state="visible", timeout=3000)
+                                      # KHÔNG gọi scroll_into_view_if_needed — gây treo trên Stripe.
                                       loc.click()
-                                      _t2.sleep(0.2)
-                                      # Clear sạch: select-all + delete (hoạt động cho cả Stripe input)
+                                      _t2.sleep(0.25)
+                                      # Clear sạch: Control+a + Backspace (đã test OK trên Stripe)
                                       try:
                                           loc.press("Control+a"); _t2.sleep(0.05)
-                                          loc.press("Delete"); _t2.sleep(0.05)
+                                          loc.press("Backspace"); _t2.sleep(0.05)
                                       except Exception:
                                           pass
-                                      loc.triple_click(); _t2.sleep(0.1)
-                                      for _ in range(8):
-                                          loc.press("Backspace")
-                                      _t2.sleep(0.1)
                                       # Gõ từng ký tự (human-like)
                                       for _ch in value:
                                           loc.press_sequentially(_ch, delay=type_delay + _rnd.randint(0, 30))
-                                      _t2.sleep(0.25)
+                                      _t2.sleep(0.3)
                                       # ── VERIFY THẬT: đọc lại input_value, so số chữ số ──
                                       _val = ""
                                       try:
@@ -846,7 +843,8 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       # input_value rỗng / khác → THẤT BẠI (không báo giả nữa)
                                       log(f"[{idx+1}] ✗ {field_name} điền hụt [{src}] got='{_val}' (mong {len(_expected_digits)} số)")
                                       return False
-                                  except Exception:
+                                  except Exception as _fe:
+                                      log(f"[{idx+1}] ✗ {field_name} lỗi [{src}]: {_fe}")
                                       return False
 
                               for _attempt in range(6):
@@ -1437,10 +1435,16 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         _t3.sleep(0.05 + _rnd.uniform(0, 0.03))
                     _t3.sleep(0.3)
                     val = ""
-                    try: val = el.input_value()
-                    except Exception: pass
-                    log(f"✓ {label} OK (main [{sel[:30]}] val={val[:4] if val else '?'}***)")
-                    return True
+                    try: val = el.input_value() or ""
+                    except Exception: val = ""
+                    # VERIFY THẬT: so số chữ số (không báo thành công giả)
+                    _exp_d = "".join(c for c in value if c.isdigit())
+                    _got_d = "".join(c for c in val if c.isdigit())
+                    if _exp_d and (_got_d == _exp_d or _got_d.endswith(_exp_d)):
+                        log(f"✓ {label} VERIFY OK (main [{sel[:30]}] {val})")
+                        return True
+                    log(f"✗ {label} điền hụt (main [{sel[:30]}] got='{val}') — thử cách khác")
+                    continue
                 except Exception:
                     continue
             # ── Strategy B: Stripe Elements iframe — mouse click + keyboard ─
