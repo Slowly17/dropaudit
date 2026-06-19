@@ -1,5 +1,5 @@
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "updated": "2026-06-19",
-  "notes": "Fix: sau F5 (page.reload) reset _card_loc=None + wait domcontentloaded+3s de Stripe hydrate truoc khi dien card"
+  "notes": "Feature: queue preview table hien thi email/the/status ngay trong tab Data, auto-refresh 4s, nut don Done/Failed"
 }

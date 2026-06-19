@@ -2203,6 +2203,15 @@ def clear_queue():
         _data_queue = []
     return {"cleared": True}
 
+@app.post("/api/queue/clean")
+def clean_queue():
+    global _data_queue
+    with _queue_lock:
+        before = len(_data_queue)
+        _data_queue = [r for r in _data_queue if r.get("_status","pending") not in ("done","failed","consumed")]
+        removed = before - len(_data_queue)
+    return {"removed": removed, "remaining": len(_data_queue)}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BULK PROFILE APIS
 # ══════════════════════════════════════════════════════════════════════════════

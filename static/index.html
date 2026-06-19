@@ -239,7 +239,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <span id="queue-count-badge" class="badge badge-queued">0 hàng</span>
         <div class="spacer"></div>
         <button class="btn btn-ghost btn-sm" onclick="loadQueue()">Làm mới</button>
-        <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa queue</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearDoneQueue()">Dọn Done/Failed</button>
+        <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa tất cả</button>
+      </div>
+      <!-- Queue preview table -->
+      <div id="queue-preview-wrap" style="display:none;margin-bottom:14px;">
+        <div id="queue-preview-table-wrap" class="data-table-wrap" style="max-height:300px;overflow-y:auto;"></div>
       </div>
 
       <!-- Import section -->
@@ -939,10 +944,57 @@ async function loadQueue() {
   try {
     const r = await fetch('/api/queue');
     const d = await r.json();
-    const total = (d.rows||[]).length;
+    const rows = d.rows || [];
+    const total = rows.length;
     document.getElementById('queue-count-badge').textContent = total + ' hàng';
     document.getElementById('queue-count-badge').className = 'badge '+(total>0?'badge-queued':'badge-stopped');
+    // Render preview table
+    const wrap = document.getElementById('queue-preview-wrap');
+    const tableWrap = document.getElementById('queue-preview-table-wrap');
+    if (!wrap || !tableWrap) return;
+    if (total === 0) { wrap.style.display='none'; tableWrap.innerHTML=''; return; }
+    wrap.style.display = '';
+    const statusColor = {pending:'var(--accent)',running:'#00c9ff',done:'#4dffa0',failed:'#ff4d4d',consumed:'var(--muted)'};
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:.78rem;">
+      <thead><tr style="background:var(--bg);">
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">#</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Email</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Pass</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Thẻ</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Tháng/Năm</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">CVV</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Status</th>
+      </tr></thead><tbody>`;
+    rows.forEach((row, i) => {
+      const st = row._status || 'pending';
+      const col = statusColor[st] || 'var(--text)';
+      const email = row.email || row.mail || row.raw || '';
+      const pass = row.password || row.pass || '';
+      const card = row.card_number || row.card || '';
+      const cardShow = card ? (card.slice(0,4)+'****'+card.slice(-4)) : '—';
+      const exp = card ? ((row.exp_month||'')+'/'+(row.exp_year||'')) : '';
+      const cvv = row.cvv || '';
+      const bg = i%2===0 ? '' : 'background:rgba(255,255,255,.02);';
+      html += `<tr style="${bg}">
+        <td style="padding:5px 10px;color:var(--muted);">${i+1}</td>
+        <td style="padding:5px 10px;">${esc(email)}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${pass ? '••••' : '—'}</td>
+        <td style="padding:5px 10px;font-family:monospace;">${esc(cardShow)}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${esc(exp)}</td>
+        <td style="padding:5px 10px;color:var(--muted);">${cvv ? '•••' : '—'}</td>
+        <td style="padding:5px 10px;font-weight:700;color:${col};">${st}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    tableWrap.innerHTML = html;
   } catch(e){}
+}
+
+async function clearDoneQueue() {
+  try {
+    const r = await fetch('/api/queue/clean', {method:'POST'});
+    if(r.ok){ const d=await r.json(); showToast(`Đã xóa ${d.removed} bản ghi done/failed`,'ok'); loadQueue(); }
+  } catch(e){ showToast('Lỗi dọn queue','err'); }
 }
 
 async function pushToQueue() {
@@ -1580,6 +1632,13 @@ async function clearDeclined() {
 setInterval(() => {
   if (currentTab === 'dashboard') loadDashboard();
 }, 5000);
+
+// Auto-refresh queue mỗi 4s khi đang ở tab auto/data
+setInterval(() => {
+  if (currentTab === 'auto' && document.getElementById('auto-data') && document.getElementById('auto-data').style.display !== 'none') {
+    loadQueue();
+  }
+}, 4000);
 </script>
 </body>
 </html>
