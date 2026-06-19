@@ -882,7 +882,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   để clear (KHÔNG dùng triple_click vì Locator không có method đó →
                                   trước đây crash silent khiến mọi field báo điền hụt), rồi press_sequentially."""
                                   try:
-                                      loc.wait_for(state="visible", timeout=3000)
+                                      loc.wait_for(state="visible", timeout=8000)
                                       # KHÔNG gọi scroll_into_view_if_needed — gây treo trên Stripe.
                                       loc.click()
                                       _t2.sleep(0.25)
@@ -1460,8 +1460,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       page.reload(wait_until="domcontentloaded", timeout=30000)
                                   except Exception:
                                       pass
-                                  page.wait_for_timeout(3000)  # chờ Stripe JS hydrate
+                                  page.wait_for_timeout(5000)  # chờ Stripe JS hydrate (tăng từ 3→5s)
                                   _card_loc = None  # reset stale locator
+                                  # Re-detect card input sau reload (tránh dùng locator stale)
+                                  _r_ctx, _r_loc = _find_card_input()
+                                  if _r_loc is not None:
+                                      _card_ctx, _card_loc = _r_ctx, _r_loc
+                                      log(f"[{idx+1}] ✓ Re-detect card input sau reload OK")
                                   continue  # reload + điền thẻ mới, KHÔNG signup lại
                               else:
                                   log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
@@ -1475,8 +1480,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       page.reload(wait_until="domcontentloaded", timeout=30000)
                                   except Exception:
                                       pass
-                                  page.wait_for_timeout(3000)  # chờ Stripe JS hydrate
+                                  page.wait_for_timeout(5000)  # chờ Stripe JS hydrate (tăng từ 3→5s)
                                   _card_loc = None  # reset stale locator
+                                  # Re-detect card input sau reload
+                                  _r_ctx, _r_loc = _find_card_input()
+                                  if _r_loc is not None:
+                                      _card_ctx, _card_loc = _r_ctx, _r_loc
+                                      log(f"[{idx+1}] ✓ Re-detect card input sau reload OK")
                                   continue
                               else:
                                   log(f"[{idx+1}] ❌ Thanh toán thất bại sau 3 lần — dừng")
