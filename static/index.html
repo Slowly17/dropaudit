@@ -116,6 +116,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 
 .progress-bar{height:4px;border-radius:2px;background:var(--border);margin-top:6px;overflow:hidden;}
 .progress-fill{height:100%;background:var(--accent2);transition:width .3s;}
+
+/* Dashboard stat cards */
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;text-align:center;}
+.stat-val{font-size:2rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--accent);}
+.stat-card#stat-declined .stat-val{color:#ff6b6b;}
+.stat-card#stat-success .stat-val{color:#4dffa0;}
+.stat-card#stat-failed .stat-val{color:#ffa94d;}
+.stat-card#stat-captcha .stat-val{color:#ff922b;}
+.stat-card#stat-running .stat-val{color:#00c9ff;}
+.stat-lbl{font-size:.75rem;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;}
 </style>
 </head>
 <body>
@@ -134,6 +144,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
   <div class="tab" onclick="switchTab('automation')">Automation</div>
   <div class="tab" onclick="switchTab('logs')">Logs</div>
   <div class="tab" onclick="switchTab('proxy')">Proxy</div>
+  <div class="tab" onclick="switchTab('dashboard')">📊 Dashboard</div>
 </nav>
 
 <!-- ==================== PROFILES ==================== -->
@@ -337,6 +348,51 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
   </div>
 </div>
 
+<!-- ==================== DASHBOARD ==================== -->
+<div class="page" id="page-dashboard">
+  <div class="section-head">
+    <h2>Dashboard</h2>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
+    <button class="btn btn-warn btn-sm" onclick="clearDeclined()">🗑 Xoá Declined</button>
+  </div>
+
+  <!-- Stats cards -->
+  <div id="dash-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:24px;">
+    <div class="stat-card" id="stat-running"><div class="stat-val" id="sv-running">—</div><div class="stat-lbl">Đang chạy</div></div>
+    <div class="stat-card" id="stat-success"><div class="stat-val" id="sv-success">—</div><div class="stat-lbl">Thành công</div></div>
+    <div class="stat-card" id="stat-declined"><div class="stat-val" id="sv-declined">—</div><div class="stat-lbl">Declined</div></div>
+    <div class="stat-card" id="stat-failed"><div class="stat-val" id="sv-failed">—</div><div class="stat-lbl">Thất bại</div></div>
+    <div class="stat-card" id="stat-captcha"><div class="stat-val" id="sv-captcha">—</div><div class="stat-lbl">Captcha Block</div></div>
+  </div>
+
+  <!-- Declined records table -->
+  <h3 style="margin-bottom:10px;font-size:.92rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Declined Cards</h3>
+  <div class="table-wrap" style="margin-bottom:28px;">
+    <table id="dash-declined-table">
+      <thead><tr>
+        <th>Timestamp</th><th>Email</th><th>Card</th><th>Cardholder</th><th>Reason</th>
+      </tr></thead>
+      <tbody id="dash-declined-body">
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Task summary -->
+  <h3 style="margin-bottom:10px;font-size:.92rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Tasks</h3>
+  <div class="table-wrap">
+    <table id="dash-tasks-table">
+      <thead><tr>
+        <th>ID</th><th>Profile</th><th>Status</th><th>Progress</th><th>Created</th>
+      </tr></thead>
+      <tbody id="dash-tasks-body">
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Chưa có task</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ==================== MODALS ==================== -->
 
 <!-- Create Profile Modal -->
@@ -472,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll('.tab').forEach((t,i)=>{
-    const names = ['profiles','automation','logs','proxy'];
+    const names = ['profiles','automation','logs','proxy','dashboard'];
     t.classList.toggle('active', names[i]===name);
   });
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -480,6 +536,7 @@ function switchTab(name) {
   if(name==='logs') loadLogs();
   if(name==='profiles') loadProfiles();
   if(name==='automation') { loadProfiles().then(()=>{ renderAutoProfileList(); refreshAutoSummary(); }); }
+  if(name==='dashboard') loadDashboard();
 }
 
 function switchSubTab(group, name) {
@@ -1448,6 +1505,81 @@ function parseExcel(file) {
     });
   });
 }
+
+// ── DASHBOARD ──────────────────────────────────────────────────────────────
+let _dashInterval = null;
+
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/dashboard');
+    const d = await r.json();
+    const s = d.summary || {};
+
+    // Update stat cards
+    document.getElementById('sv-running').textContent  = s.running        ?? 0;
+    document.getElementById('sv-success').textContent  = s.success        ?? 0;
+    document.getElementById('sv-declined').textContent = s.declined       ?? 0;
+    document.getElementById('sv-failed').textContent   = s.failed         ?? 0;
+    document.getElementById('sv-captcha').textContent  = s.captcha_blocked?? 0;
+
+    // Declined table
+    const tbody = document.getElementById('dash-declined-body');
+    const recs  = (d.declined_records || []).slice().reverse(); // mới nhất lên trên
+    if (recs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>';
+    } else {
+      tbody.innerHTML = recs.map(rec => {
+        const card = rec.card ? rec.card.slice(0,4)+'****'+rec.card.slice(-4) : '—';
+        return `<tr>
+          <td style="font-size:.78rem;color:var(--muted)">${rec.timestamp||'—'}</td>
+          <td>${escHtml(rec.email||'—')}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${escHtml(card)}</td>
+          <td>${escHtml(rec.cardholder||'—')}</td>
+          <td style="color:#ff6b6b">${escHtml(rec.reason||'—')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Tasks table
+    const tbody2 = document.getElementById('dash-tasks-body');
+    const tasks  = (d.tasks || []).slice().reverse();
+    if (tasks.length === 0) {
+      tbody2.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Chưa có task</td></tr>';
+    } else {
+      tbody2.innerHTML = tasks.map(t => {
+        const pct = t.total > 0 ? Math.round(t.done/t.total*100) : 0;
+        const statusColor = t.status==='running' ? '#00c9ff' : t.status==='done' ? '#4dffa0' : '#ff6b6b';
+        return `<tr>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:.78rem">${t.id||'—'}</td>
+          <td>${escHtml(t.profile||'—')}</td>
+          <td style="color:${statusColor};font-weight:600">${t.status||'—'}</td>
+          <td>
+            <span style="font-size:.8rem">${t.done}/${t.total}</span>
+            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          </td>
+          <td style="font-size:.78rem;color:var(--muted)">${t.created||'—'}</td>
+        </tr>`;
+      }).join('');
+    }
+  } catch(e) {
+    console.error('Dashboard load error', e);
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function clearDeclined() {
+  if (!confirm('Xoá toàn bộ declined records?')) return;
+  await fetch('/api/declined', {method:'DELETE'});
+  loadDashboard();
+}
+
+// Auto-refresh dashboard mỗi 5s khi đang ở tab dashboard
+setInterval(() => {
+  if (currentTab === 'dashboard') loadDashboard();
+}, 5000);
 </script>
 </body>
 </html>

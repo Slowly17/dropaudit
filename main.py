@@ -18,8 +18,29 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
 # ─── Storage ───────────────────────────────────────────────────────────────────
-DATA_FILE   = Path("data.json")
-TASKS_FILE  = Path("tasks.json")
+DATA_FILE     = Path("data.json")
+TASKS_FILE    = Path("tasks.json")
+DECLINED_FILE = Path("declined_results.json")
+
+def load_declined():
+    if DECLINED_FILE.exists():
+        try:
+            return json.loads(DECLINED_FILE.read_text())
+        except Exception:
+            pass
+    return {"records": []}
+
+def save_declined_record(email: str, card: str, reason: str, cardholder: str = ""):
+    """Thêm 1 record declined vào declined_results.json (thread-safe với GIL)."""
+    d = load_declined()
+    d["records"].append({
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "email":     email,
+        "card":      card,
+        "cardholder": cardholder,
+        "reason":    reason,
+    })
+    DECLINED_FILE.write_text(json.dumps(d, indent=2))
 
 def load_data():
     if DATA_FILE.exists():
@@ -658,9 +679,24 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 2: Stripe Checkout ─────────────────────────────────
                     if card_number:
                         _pay_success = False
-                        for _pay_retry in range(3):
+                        # _current_card_row: thẻ đang dùng (ban đầu là row hiện tại, khi declined → thẻ tiếp từ queue)
+                        _current_card_row = row
+                        for _pay_retry in range(10):  # tối đa 10 thẻ thử
+                          # Đọc thông tin thẻ từ _current_card_row
+                          card_number     = _current_card_row.get("card_number", "").strip().replace(" ", "")
+                          exp_month       = _current_card_row.get("exp_month", "").strip().zfill(2)
+                          exp_year        = _current_card_row.get("exp_year", "").strip()
+                          cvv             = _current_card_row.get("cvv", "").strip()
+                          cardholder_name = _current_card_row.get("cardholder_name", "").strip()
+                          zip_code        = _current_card_row.get("zip", "").strip()
+                          address         = _current_card_row.get("address", "").strip()
+                          exp_year_2      = exp_year[-2:] if len(exp_year) >= 2 else exp_year
+                          exp_mmyy        = f"{exp_month}{exp_year_2}"
+                          if not card_number:
+                              log(f"[{idx+1}] ⚠ Không còn thẻ để thử — dừng")
+                              break
                           if _pay_retry > 0:
-                            log(f"[{idx+1}] 🔄 Retry lần {_pay_retry} — reload Stripe...")
+                            log(f"[{idx+1}] 🔄 Retry thẻ mới ({_pay_retry+1}) — reload Stripe...")
                             page.reload()
                           log(f"[{idx+1}] ⏳ Đợi Stripe Checkout load (proxy chậm — tối đa 60s)...")
                           # Đợi redirect tới stripe hoặc trang có card input
@@ -1358,9 +1394,32 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               break
 
                           if _card_declined:
-                              log(f"[{idx+1}] ⏹ Thẻ bị decline — dừng, browser giữ nguyên")
-                              _keep_alive.wait()
-                              break
+                              # ── Ghi declined record ──
+                              _dec_reason = "Your card was declined"
+                              _dec_email  = _current_card_row.get("email", email)
+                              _dec_card   = card_number
+                              log(f"[{idx+1}] 📝 Ghi declined: {_dec_email} | {_dec_card[:4]}****")
+                              try:
+                                  save_declined_record(_dec_email, _dec_card, _dec_reason, cardholder_name)
+                              except Exception as _de:
+                                  log(f"[{idx+1}] ⚠ Lỗi ghi declined: {_de}")
+                              # ── Đánh dấu row declined trong queue ──
+                              try:
+                                  _dec_idx = _current_card_row.get("_idx")
+                                  if _dec_idx is not None:
+                                      queue_done(_dec_idx, "declined")
+                              except Exception:
+                                  pass
+                              # ── Lấy thẻ tiếp theo từ queue ──
+                              _next_row = queue_pop()
+                              if _next_row:
+                                  _current_card_row = _next_row
+                                  log(f"[{idx+1}] ➡ Thẻ tiếp: {_next_row.get('card_number','')[:4]}**** — F5 reload Stripe")
+                                  continue  # reload + điền thẻ mới ở đầu vòng lặp
+                              else:
+                                  log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — dừng")
+                                  _keep_alive.wait()
+                                  break
 
                           if _payment_failed:
                               if _pay_retry < 2:
@@ -2545,6 +2604,71 @@ def download_results(tid: str):
     return PlainTextResponse(buf.getvalue(), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="results_{tid}.csv"'})
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DECLINED RESULTS API
+# ══════════════════════════════════════════════════════════════════════════════
+@app.get("/api/declined")
+def get_declined():
+    return load_declined()
+
+@app.delete("/api/declined")
+def clear_declined():
+    DECLINED_FILE.write_text(json.dumps({"records": []}, indent=2))
+    return {"cleared": True}
+
+@app.get("/api/dashboard")
+def get_dashboard():
+    """Tổng hợp hiệu suất automation: tất cả tasks + declined."""
+    tasks   = list(running_tasks.values())
+    declined_data = load_declined()
+    declined_records = declined_data.get("records", [])
+
+    total_ran    = sum(t.get("done", 0) for t in tasks)
+    total_success= sum(
+        1 for t in tasks
+        for r in t.get("results", [])
+        if r.get("status") == "success"
+    )
+    total_declined = len(declined_records)
+    total_failed = sum(
+        1 for t in tasks
+        for r in t.get("results", [])
+        if r.get("status") not in ("success", "pending", "captcha_blocked")
+    )
+    total_captcha= sum(
+        1 for t in tasks
+        for r in t.get("results", [])
+        if r.get("status") == "captcha_blocked"
+    )
+    running_count = sum(1 for t in tasks if t.get("status") == "running")
+
+    return {
+        "summary": {
+            "total_ran":      total_ran,
+            "success":        total_success,
+            "declined":       total_declined,
+            "failed":         total_failed,
+            "captcha_blocked":total_captcha,
+            "running":        running_count,
+        },
+        "declined_records": declined_records[-200:],  # 200 gần nhất
+        "tasks": [
+            {
+                "id":      t.get("id"),
+                "profile": t.get("profile_name", ""),
+                "status":  t.get("status"),
+                "done":    t.get("done", 0),
+                "total":   t.get("total", 0),
+                "created": t.get("created_at", ""),
+                "results": [
+                    {"email": r.get("email",""), "card": r.get("card_number","")[:4]+"****" if r.get("card_number") else "", "status": r.get("status","")}
+                    for r in t.get("results", [])
+                ],
+            }
+            for t in tasks
+        ],
+    }
 
 # ─── Static ────────────────────────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory="static"), name="static")

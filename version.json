@@ -1,5 +1,5 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "updated": "2026-06-19",
-  "notes": "Revert v1.0.5 - quay lai v1.0.4"
+  "notes": "Declined -> F5 + thu the tiep theo tu queue. Xoa row da dung. Ghi declined_results.json (Timestamp|Mail|Card|Reason). Them tab Dashboard voi hieu suat automation + bang declined."
 }
