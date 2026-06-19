@@ -271,16 +271,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       </div>
     </div>
 
-    <!-- Queue data preview (hiện sau khi push) -->
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+    <!-- Queue data preview (luôn hiện) -->
+    <div style="background:var(--card);border:2px solid var(--accent);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
-        <h3 style="font-size:.92rem;font-weight:700;margin:0;">Dữ liệu trong Queue</h3>
-        <span id="queue-count-badge2" style="font-size:.78rem;color:var(--accent);font-weight:700;"></span>
+        <h3 style="font-size:.95rem;font-weight:700;margin:0;color:var(--accent);">📋 Dữ liệu trong Queue</h3>
+        <span id="queue-count-badge2" style="font-size:.78rem;color:var(--accent);font-weight:700;background:rgba(77,255,160,.12);padding:2px 8px;border-radius:20px;"></span>
         <div class="spacer"></div>
-        <button class="btn btn-ghost btn-sm" onclick="exportQueueCSV()">⬇ Export CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="exportResultCSV()">⬇ Export Result</button>
-        <button class="btn btn-ghost btn-sm" onclick="clearDoneQueue()">Dọn Done/Failed</button>
-        <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa tất cả</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportQueueCSV()" title="Xuất queue hiện tại ra CSV">⬇ Export Queue CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="exportResultCSV()" title="Xuất kết quả đã chạy ra CSV">⬇ Export Result</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearDoneQueue()">🗑 Dọn Done/Failed</button>
+        <button class="btn btn-danger btn-sm" onclick="clearQueue()">✕ Xóa tất cả</button>
       </div>
       <div id="queue-preview-wrap2">
         <div id="queue-preview-table-wrap2" class="data-table-wrap" style="max-height:320px;overflow-y:auto;"></div>

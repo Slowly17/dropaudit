@@ -1493,6 +1493,12 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                     if _pay_success:
                         result_row["status"] = "success"
                         log(f"[{idx+1}] ✅ Xong: {email or cardholder_name}")
+                        try:
+                            _row_idx = row.get("_idx")
+                            if _row_idx is not None:
+                                queue_done(_row_idx, "success")
+                        except Exception:
+                            pass
                     elif result_row.get("captcha_blocked"):
                         result_row["status"] = "captcha_blocked"
                         log(f"[{idx+1}] 🚫 Kết quả: captcha_blocked")
@@ -2200,6 +2206,9 @@ def queue_done(idx: int, status: str):
         for row in _data_queue:
             if row["_idx"] == idx:
                 row["_status"] = status
+                if status in ("done", "success", "consumed", "declined", "failed"):
+                    row["email"] = ""
+                    row["password"] = ""
                 break
 
 def queue_get_all():

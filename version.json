@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "updated": "2026-06-19",
-  "notes": "Fix: success count dashboard, countdown 5s+close browser on success, wait 3s after Pay, queue preview visible, Export Result CSV"
+  "notes": "Fix: queue_done clears email/pass on success/done/failed/declined; queue_done called on pay_success; Queue section always visible with accent border"
 }
