@@ -1,5 +1,5 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "updated": "2026-06-19",
-  "notes": "FIX DUT DIEM dien card: bo triple_click (crash silent) + bo scroll_into_view_if_needed (treo). Da test that tren checkout.stripe.com bang Firefox: card/exp/cvc deu OK 100%"
+  "notes": "Da TEST THAT full flow (mo profile + signup + Stripe + dien card deu OK). Them: phat hien loi signup 422 (email/pass bi tu choi) bao ro thay vi ket im lang o Start My Trial"
 }

@@ -610,8 +610,32 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                         log(f"[{idx+1}] ⏳ Chờ nút Create Account...")
                         page.wait_for_selector('button:has-text("Create Account")', timeout=20000)
                         page.wait_for_timeout(500)
+
+                        # Bắt response signup để phát hiện lỗi 422 (email/password bị từ chối)
+                        _signup_status = [None]
+                        def _on_signup_resp(r):
+                            try:
+                                if "auth/v1/signup" in r.url:
+                                    _signup_status[0] = r.status
+                            except Exception:
+                                pass
+                        page.on("response", _on_signup_resp)
+
                         page.click('button:has-text("Create Account")')
                         log(f"[{idx+1}] ✓ Clicked Create Account")
+                        page.wait_for_timeout(3500)  # chờ API trả về
+
+                        # Kiểm tra kết quả signup
+                        if _signup_status[0] is not None and _signup_status[0] >= 400:
+                            log(f"[{idx+1}] ✗ Đăng ký BỊ TỪ CHỐI (HTTP {_signup_status[0]}). "
+                                f"Email có thể không hợp lệ/đã tồn tại HOẶC password quá yếu. "
+                                f"→ Dùng email thật (vd outlook/email mua) + password mạnh (chữ hoa+thường+số+ký tự đặc biệt, ≥10 ký tự).")
+                            result_row["status"] = f"signup_failed_{_signup_status[0]}"
+                            try: page.remove_listener("response", _on_signup_resp)
+                            except Exception: pass
+                            raise RuntimeError(f"Signup HTTP {_signup_status[0]}")
+                        try: page.remove_listener("response", _on_signup_resp)
+                        except Exception: pass
 
                         # Đợi React re-render xong — nút Start My Trial xuất hiện tối đa 45s
                         log(f"[{idx+1}] ⏳ Đợi Start My Trial button (45s)...")
