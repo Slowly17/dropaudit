@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
+  "version": "1.1.6",
   "updated": "2026-06-19",
-  "notes": "Force update: Queue preview section + Export Result button luon hien thi trong tab Du lieu & Chay"
+  "notes": "Fix: reset _card_loc=None dau moi vong _pay_retry; sau reload dung wait_for_load_state(load)+networkidle thay vi domcontentloaded; khong con stale locator khi dien the ke"
 }

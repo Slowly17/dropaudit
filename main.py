@@ -695,6 +695,9 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                         _current_card_row = row
                         _cards_tried = 0  # đếm số thẻ đã thử trong phiên này
                         for _pay_retry in range(3):  # tối đa 3 thẻ/phiên
+                          # LUÔN reset stale locator đầu mỗi vòng — tránh dùng locator từ page cũ
+                          _card_loc = None
+                          _card_ctx = None
                           # Đọc thông tin thẻ từ _current_card_row
                           card_number     = _current_card_row.get("card_number", "").strip().replace(" ", "")
                           exp_month       = _current_card_row.get("exp_month", "").strip().zfill(2)
@@ -1457,16 +1460,15 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   _current_card_row = _next_row
                                   log(f"[{idx+1}] ➡ Thẻ {_cards_tried+1}/3: {_next_row.get('card_number','')[:4]}**** — F5 Stripe")
                                   try:
-                                      page.reload(wait_until="domcontentloaded", timeout=30000)
+                                      page.reload(wait_until="load", timeout=30000)
                                   except Exception:
                                       pass
-                                  page.wait_for_timeout(5000)  # chờ Stripe JS hydrate (tăng từ 3→5s)
-                                  _card_loc = None  # reset stale locator
-                                  # Re-detect card input sau reload (tránh dùng locator stale)
-                                  _r_ctx, _r_loc = _find_card_input()
-                                  if _r_loc is not None:
-                                      _card_ctx, _card_loc = _r_ctx, _r_loc
-                                      log(f"[{idx+1}] ✓ Re-detect card input sau reload OK")
+                                  try:
+                                      page.wait_for_load_state("networkidle", timeout=8000)
+                                  except Exception:
+                                      pass
+                                  page.wait_for_timeout(3000)  # Stripe JS bind events
+                                  # _card_loc sẽ được reset ở đầu vòng loop _pay_retry kế
                                   continue  # reload + điền thẻ mới, KHÔNG signup lại
                               else:
                                   log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
@@ -1477,16 +1479,15 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               if _pay_retry < 2:
                                   log(f"[{idx+1}] 🔄 F5 reload Stripe để retry ({_pay_retry+1}/3)...")
                                   try:
-                                      page.reload(wait_until="domcontentloaded", timeout=30000)
+                                      page.reload(wait_until="load", timeout=30000)
                                   except Exception:
                                       pass
-                                  page.wait_for_timeout(5000)  # chờ Stripe JS hydrate (tăng từ 3→5s)
-                                  _card_loc = None  # reset stale locator
-                                  # Re-detect card input sau reload
-                                  _r_ctx, _r_loc = _find_card_input()
-                                  if _r_loc is not None:
-                                      _card_ctx, _card_loc = _r_ctx, _r_loc
-                                      log(f"[{idx+1}] ✓ Re-detect card input sau reload OK")
+                                  try:
+                                      page.wait_for_load_state("networkidle", timeout=8000)
+                                  except Exception:
+                                      pass
+                                  page.wait_for_timeout(3000)  # Stripe JS bind events
+                                  # _card_loc sẽ được reset ở đầu vòng loop _pay_retry kế
                                   continue
                               else:
                                   log(f"[{idx+1}] ❌ Thanh toán thất bại sau 3 lần — dừng")
