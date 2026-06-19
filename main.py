@@ -857,6 +857,19 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       except Exception:
                                           _val = ""
                                       _got_digits = "".join(c for c in _val if c.isdigit())
+                                      # ── TEXT fields (cardholder name, address...) — không có digit ──
+                                      if not _expected_digits:
+                                          # Verify bằng so sánh text (case-insensitive, strip)
+                                          if _val.strip().lower() == value.strip().lower():
+                                              log(f"[{idx+1}] ✓ {field_name} VERIFY OK [{src}] ({_val})")
+                                              return True
+                                          # Điền được một phần (>50% ký tự) cũng chấp nhận
+                                          if _val.strip() and len(_val.strip()) >= len(value.strip()) * 0.5:
+                                              log(f"[{idx+1}] ✓ {field_name} OK [{src}] ({_val})")
+                                              return True
+                                          log(f"[{idx+1}] ✗ {field_name} điền hụt [{src}] got='{_val}' (mong '{value}')")
+                                          return False
+                                      # ── NUMERIC fields (card, exp, cvc, zip) ──
                                       if _expected_digits and _got_digits == _expected_digits:
                                           log(f"[{idx+1}] ✓ {field_name} VERIFY OK [{src}] ({_val})")
                                           return True
@@ -981,12 +994,45 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # ── Điền Cardholder Name ──────────────────────────────
                           if cardholder_name:
                               log(f"[{idx+1}] 👤 Cardholder name: {cardholder_name}")
-                              _wait_and_fill_frame(
-                                  ['input[name="billingName"]', 'input[placeholder*="Full name" i]',
-                                   'input[placeholder*="Name on card" i]', 'input[autocomplete*="cc-name"]',
-                                   '[data-field="billingName"] input'],
-                                  cardholder_name, "Cardholder name", type_delay=70, wait_ms=1500
-                              )
+                              # Thử điền thẳng main page trước (checkout.stripe.com: billingName là main page input)
+                              _ok_name = False
+                              for _name_sel in [
+                                  'input[id="billingName"]',
+                                  'input[name="billingName"]',
+                                  'input[autocomplete="name"]',
+                                  'input[autocomplete*="cc-name"]',
+                                  'input[placeholder*="Full name" i]',
+                                  'input[placeholder*="Name on card" i]',
+                                  '[data-field="billingName"] input',
+                              ]:
+                                  _nloc = page.locator(_name_sel).first
+                                  try:
+                                      if _nloc.count() > 0 and _nloc.is_visible(timeout=1500):
+                                          _nloc.click()
+                                          import time as _nt; _nt.sleep(0.2)
+                                          _nloc.press("Control+a"); _nt.sleep(0.05)
+                                          _nloc.press("Backspace"); _nt.sleep(0.05)
+                                          for _nc in cardholder_name:
+                                              _nloc.press_sequentially(_nc, delay=70 + _rnd.randint(0,20))
+                                          _nt.sleep(0.3)
+                                          _nval = ""
+                                          try: _nval = _nloc.input_value() or ""
+                                          except: pass
+                                          if _nval.strip():
+                                              log(f"[{idx+1}] ✓ Cardholder name OK [main/{_name_sel[:35]}] ({_nval})")
+                                              _ok_name = True
+                                              break
+                                  except Exception as _ne:
+                                      log(f"[{idx+1}] name sel {_name_sel[:30]}: {_ne}")
+                                      continue
+                              if not _ok_name:
+                                  log(f"[{idx+1}] ⚠ Cardholder name: thử qua _wait_and_fill_frame...")
+                                  _wait_and_fill_frame(
+                                      ['input[id="billingName"]', 'input[name="billingName"]',
+                                       'input[autocomplete="name"]', 'input[autocomplete*="cc-name"]',
+                                       'input[placeholder*="Full name" i]', 'input[placeholder*="Name on card" i]'],
+                                      cardholder_name, "Cardholder name", type_delay=70, wait_ms=1500
+                                  )
                               page.wait_for_timeout(800)
 
                           # ── Điền ZIP ──────────────────────────────────────────

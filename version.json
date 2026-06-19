@@ -1,5 +1,5 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "updated": "2026-06-19",
-  "notes": "Da TEST THAT full flow (mo profile + signup + Stripe + dien card deu OK). Them: phat hien loi signup 422 (email/pass bi tu choi) bao ro thay vi ket im lang o Start My Trial"
+  "notes": "Fix cardholder name: verify logic cho text field (khong dung digit compare), selector chinh xac input[id=billingName] tren main page, khong qua iframe loop"
 }
