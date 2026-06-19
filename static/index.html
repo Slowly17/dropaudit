@@ -238,16 +238,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <h3 style="font-size:.95rem;font-weight:700;">Queue</h3>
         <span id="queue-count-badge" class="badge badge-queued">0 hàng</span>
         <div class="spacer"></div>
-        <button class="btn btn-ghost btn-sm" onclick="loadQueue()">Làm mới</button>
-        <button class="btn btn-ghost btn-sm" onclick="exportQueueCSV()">⬇ Export CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="clearDoneQueue()">Dọn Done/Failed</button>
-        <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa tất cả</button>
       </div>
-      <!-- Queue preview table -->
-      <div id="queue-preview-wrap" style="display:none;margin-bottom:14px;">
-        <div id="queue-preview-table-wrap" class="data-table-wrap" style="max-height:300px;overflow-y:auto;"></div>
-      </div>
-
       <!-- Import section -->
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
         <label class="btn btn-primary btn-sm" style="cursor:pointer;margin:0;">
@@ -277,6 +268,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         </div>
         <div id="import-preview-table-wrap" class="data-table-wrap" style="max-height:320px;overflow-y:auto;margin-bottom:12px;"></div>
         <button id="btn-push-preview" class="btn btn-success" onclick="pushPreviewToQueue()">✓ Đẩy vào queue (<span id="preview-row-count">0</span> hàng)</button>
+      </div>
+    </div>
+
+    <!-- Queue data preview (hiện sau khi push) -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+        <h3 style="font-size:.92rem;font-weight:700;margin:0;">Dữ liệu trong Queue</h3>
+        <span id="queue-count-badge2" style="font-size:.78rem;color:var(--accent);font-weight:700;"></span>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" onclick="exportQueueCSV()">⬇ Export CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportResultCSV()">⬇ Export Result</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearDoneQueue()">Dọn Done/Failed</button>
+        <button class="btn btn-danger btn-sm" onclick="clearQueue()">Xóa tất cả</button>
+      </div>
+      <div id="queue-preview-wrap2">
+        <div id="queue-preview-table-wrap2" class="data-table-wrap" style="max-height:320px;overflow-y:auto;"></div>
       </div>
     </div>
 
@@ -950,12 +957,13 @@ async function loadQueue() {
     const total = rows.length;
     document.getElementById('queue-count-badge').textContent = total + ' hàng';
     document.getElementById('queue-count-badge').className = 'badge '+(total>0?'badge-queued':'badge-stopped');
+    // sync badge2
+    const badge2 = document.getElementById('queue-count-badge2');
+    if (badge2) badge2.textContent = total + ' hàng';
     // Render preview table
-    const wrap = document.getElementById('queue-preview-wrap');
-    const tableWrap = document.getElementById('queue-preview-table-wrap');
-    if (!wrap || !tableWrap) return;
-    if (total === 0) { wrap.style.display='none'; tableWrap.innerHTML=''; return; }
-    wrap.style.display = '';
+    const tableWrap = document.getElementById('queue-preview-table-wrap2');
+    if (!tableWrap) return;
+    if (total === 0) { tableWrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82rem;">Chưa có dữ liệu</div>'; return; }
     const statusColor = {pending:'var(--accent)',running:'#00c9ff',done:'#4dffa0',failed:'#ff4d4d',consumed:'var(--muted)'};
     let html = `<table style="width:100%;border-collapse:collapse;font-size:.78rem;">
       <thead><tr style="background:var(--bg);">
@@ -1663,6 +1671,18 @@ async function exportQueueCSV() {
     downloadCSV('queue_export.csv', headers, normalized);
     showToast('Đã xuất queue_export.csv','ok');
   } catch(e) { showToast('Lỗi export','err'); }
+}
+
+async function exportResultCSV() {
+  try {
+    const r = await fetch('/api/tasks/all-results');
+    const d = await r.json();
+    const allRows = d.results || [];
+    if (!allRows.length) { showToast('Chưa có result nào','err'); return; }
+    const headers = ['email','password','card_number','exp_month','exp_year','cvv','cardholder_name','address','city','state','zip','status'];
+    downloadCSV('result_export.csv', headers, allRows.map(r => ({...r, card_number: r.card_number || r.card || ''})));
+    showToast(`Đã xuất ${allRows.length} dòng → result_export.csv`,'ok');
+  } catch(e) { showToast('Lỗi export result','err'); }
 }
 
 async function exportDeclinedCSV() {

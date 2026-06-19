@@ -1275,6 +1275,10 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           def _get_widget_frames():
                               return [fr for fr in _get_hcaptcha_frames() if 'challenge' not in fr.url]
 
+                          # ── Đợi proxy load sau khi click Pay (proxy yếu cần thêm thời gian) ──
+                          log(f"[{idx+1}] ⏳ Đợi trang phản hồi sau Pay (3s)...")
+                          page.wait_for_timeout(3000)
+
                           # ── BƯỚC 1: Đợi hCaptcha widget, click "I'm human" ──────────
                           log(f"[{idx+1}] 🔍 Đợi hCaptcha widget (tối đa 15s)...")
                           _captcha_clicked = False
@@ -1400,7 +1404,12 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               break
 
                           if _pay_success:
-                              log(f"[{idx+1}] ✅ Thanh toán thành công!")
+                              log(f"[{idx+1}] ✅ Thanh toán thành công! Đang đếm ngược 5s rồi đóng profile...")
+                              for _cd in range(5, 0, -1):
+                                  log(f"[{idx+1}] ⏱ Đóng sau {_cd}s...")
+                                  import time as _t2; _t2.sleep(1)
+                              log(f"[{idx+1}] 🔒 Đóng profile")
+                              _keep_alive.set()  # unblock → browser sẽ đóng
                               break
 
                           if _card_declined:
@@ -1478,7 +1487,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                         if not _pay_success:
                             log(f"[{idx+1}] ⏹ DỪNG — automation kết thúc, browser giữ nguyên")
-                        _keep_alive.wait()
+                            _keep_alive.wait()  # chỉ block khi KHÔNG thành công
 
                     # Chỉ ghi success nếu thanh toán thực sự thành công
                     if _pay_success:
@@ -2642,6 +2651,14 @@ def list_tasks():
         }
         for tid, t in running_tasks.items()
     ]
+
+@app.get("/api/tasks/all-results")
+def get_all_results():
+    all_rows = []
+    for tid, t in running_tasks.items():
+        for r in t.get("results", []):
+            all_rows.append({**r, "_task_id": tid})
+    return {"results": all_rows, "total": len(all_rows)}
 
 @app.get("/api/tasks/{tid}/results.csv")
 def download_results(tid: str):
