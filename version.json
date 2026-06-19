@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "updated": "2026-06-19",
-  "notes": "Ban dau: 5 muc fix (dien card, captcha, check-all proxy, gop tab, 2 tab khi mo)"
+  "notes": "Fix ky phan dien card: cho o card that su visible+enabled moi dien, verify gia tri thuc te (khong bao thanh cong gia), khong bam Pay khi card trong, verify lan cuoi truoc khi Pay"
 }

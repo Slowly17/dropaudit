@@ -665,45 +665,66 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               log(f"[{idx+1}] ⚠ Stripe chưa load sau 60s, URL: {page.url[:80]}")
 
                           log(f"[{idx+1}] URL Stripe: {page.url[:80]}")
-                          # ── THÊM THỜI GIAN CHỜ trước khi điền card (mục 1) ──────────
-                          # Stripe iframe (Stripe Elements / hosted checkout) cần thời gian
-                          # render input. Proxy chậm → cần chờ lâu hơn. Chờ tối đa 30s
-                          # cho tới khi PHÁT HIỆN có ô card (main page hoặc iframe), rồi
-                          # chờ thêm 3.5s để JS hydrate xong mới bắt đầu điền.
-                          log(f"[{idx+1}] ⏳ Chờ ô nhập thẻ render (tối đa 30s)...")
-                          _card_field_ready = False
-                          _card_field_dl = _t_top.time() + 30.0
+                          # ── CHỜ Ô CARD THẬT SỰ SẴN SÀNG (mục 1 - fix kỹ) ───────────
+                          # QUAN TRỌNG: KHÔNG dùng iframe[src*="stripe.com"] để detect vì
+                          # iframe ẩn của Stripe luôn tồn tại ngay khi trang load → báo
+                          # "thấy form" trong khi ô nhập card CHƯA render → điền hụt.
+                          #
+                          # Trên checkout.stripe.com (hosted), ô card là INPUT TRỰC TIẾP
+                          # trên trang. Phải chờ tới khi input đó:
+                          #   1) tồn tại trong DOM
+                          #   2) visible (bounding box > 0)
+                          #   3) enabled (không disabled / readonly)
+                          # rồi mới coi là sẵn sàng. Chờ tối đa 45s (proxy chậm).
+                          _card_sel_all = (
+                              'input[name="cardnumber"], input[autocomplete="cc-number"], '
+                              'input[autocomplete*="cc-number"], '
+                              'input[placeholder*="1234"], input[placeholder*="Card number" i], '
+                              '[data-elements-stable-field-name="cardNumber"] input, '
+                              'input#cardNumber, input[id*="cardNumber" i], input[id*="card-number" i]'
+                          )
+
+                          def _find_card_input():
+                              """Trả về (frame, locator) của ô card đang VISIBLE+ENABLED, hoặc (None,None)."""
+                              # a) main page
+                              try:
+                                  _lc = page.locator(_card_sel_all).first
+                                  if _lc.count() > 0 and _lc.is_visible() and _lc.is_enabled():
+                                      return (page, _lc)
+                              except Exception:
+                                  pass
+                              # b) bên trong các frame stripe (Stripe Elements embedded - same-origin reachable)
+                              for _fr in page.frames:
+                                  if "stripe.com" not in (_fr.url or ""):
+                                      continue
+                                  try:
+                                      _lc = _fr.locator(_card_sel_all).first
+                                      if _lc.count() > 0 and _lc.is_visible() and _lc.is_enabled():
+                                          return (_fr, _lc)
+                                  except Exception:
+                                      pass
+                              return (None, None)
+
+                          log(f"[{idx+1}] ⏳ Chờ ô nhập thẻ SẴN SÀNG (visible+enabled, tối đa 45s)...")
+                          _card_ctx, _card_loc = (None, None)
+                          _card_field_dl = _t_top.time() + 45.0
                           while _t_top.time() < _card_field_dl:
-                              # a) Input card trực tiếp trên main page (hosted checkout)
-                              try:
-                                  if page.query_selector(
-                                      'input[name="cardnumber"], input[autocomplete*="cc-number"], '
-                                      'input[placeholder*="1234"], '
-                                      '[data-elements-stable-field-name="cardNumber"]'
-                                  ):
-                                      _card_field_ready = True
-                                      log(f"[{idx+1}] ✓ Thấy ô card trên main page")
-                                      break
-                              except Exception:
-                                  pass
-                              # b) Iframe Stripe Elements xuất hiện
-                              try:
-                                  if page.query_selector(
-                                      'iframe[title*="card" i], iframe[title*="payment" i], '
-                                      'iframe[title*="Secure" i], iframe[name*="privateStripeFrame"], '
-                                      'iframe[src*="stripe.com"]'
-                                  ):
-                                      _card_field_ready = True
-                                      log(f"[{idx+1}] ✓ Thấy iframe Stripe")
-                                      break
-                              except Exception:
-                                  pass
+                              _card_ctx, _card_loc = _find_card_input()
+                              if _card_loc is not None:
+                                  log(f"[{idx+1}] ✓ Ô card đã render & sẵn sàng")
+                                  break
                               page.wait_for_timeout(1000)
 
-                          if not _card_field_ready:
-                              log(f"[{idx+1}] ⚠ Chưa thấy ô card sau 30s — vẫn thử điền")
-                          # Chờ thêm cho JS hydrate xong
-                          page.wait_for_timeout(3500)
+                          if _card_loc is None:
+                              log(f"[{idx+1}] ⚠ Ô card CHƯA render sau 45s → reload thử lại")
+                              continue  # sang vòng _pay_retry tiếp theo (reload)
+
+                          # Chờ thêm cho JS Stripe hydrate (event listener gắn xong)
+                          page.wait_for_timeout(2500)
+                          # Re-check lần cuối sau khi hydrate (DOM có thể đã thay đổi)
+                          _card_ctx2, _card_loc2 = _find_card_input()
+                          if _card_loc2 is not None:
+                              _card_ctx, _card_loc = _card_ctx2, _card_loc2
 
                           # ── Helper điền vào Stripe iframe bằng MOUSE + KEYBOARD ─────
                           # Firefox chặn truy cập cross-origin iframe (frame.locator /
@@ -758,6 +779,19 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       page.keyboard.press(_ch)
                                       _t_top.sleep(0.06 + _rnd.uniform(0, 0.04))
                                   _t_top.sleep(0.3)
+                                  # VERIFY: thử đọc lại input bên trong frame nếu truy cập được
+                                  _exp = "".join(c for c in value if c.isdigit())
+                                  try:
+                                      _ifr_frame = _ifr_el.content_frame()
+                                      if _ifr_frame:
+                                          _inp = _ifr_frame.query_selector("input")
+                                          if _inp:
+                                              _got = "".join(c for c in (_inp.input_value() or "") if c.isdigit())
+                                              if _exp and _got != _exp and not _got.endswith(_exp):
+                                                  log(f"[{idx+1}] ✗ {field_name} mouse-fill verify hụt got='{_got}'")
+                                                  return False
+                                  except Exception:
+                                      pass  # không đọc được = cross-origin, chấp nhận (đã gõ)
                                   log(f"[{idx+1}] ✓ {field_name} (mouse+key x={_cx:.0f})")
                                   return True
                               except Exception as _me:
@@ -769,34 +803,61 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               """Chờ field trong frame hoặc main page, điền bằng press_sequentially đúng context."""
                               import time as _t2
 
+                              # Số chữ số kỳ vọng (bỏ ký tự không phải số) để VERIFY thật
+                              _expected_digits = "".join(c for c in value if c.isdigit())
+
                               def _do_fill(loc, src):
-                                  """Thực sự điền vào locator, return True nếu OK."""
+                                  """Điền vào locator + VERIFY giá trị thật. return True CHỈ KHI điền thành công."""
                                   try:
                                       loc.wait_for(state="visible", timeout=2000)
+                                      if not loc.is_enabled():
+                                          return False
                                       loc.scroll_into_view_if_needed()
                                       loc.click()
-                                      _t2.sleep(0.15)
-                                      # Clear bằng triple-click + Backspace (an toàn hơn Control+a trong iframe)
-                                      loc.triple_click()
+                                      _t2.sleep(0.2)
+                                      # Clear sạch: select-all + delete (hoạt động cho cả Stripe input)
+                                      try:
+                                          loc.press("Control+a"); _t2.sleep(0.05)
+                                          loc.press("Delete"); _t2.sleep(0.05)
+                                      except Exception:
+                                          pass
+                                      loc.triple_click(); _t2.sleep(0.1)
+                                      for _ in range(8):
+                                          loc.press("Backspace")
                                       _t2.sleep(0.1)
-                                      loc.press("Backspace")
-                                      _t2.sleep(0.05)
+                                      # Gõ từng ký tự (human-like)
                                       for _ch in value:
                                           loc.press_sequentially(_ch, delay=type_delay + _rnd.randint(0, 30))
-                                      # Xác nhận có text
+                                      _t2.sleep(0.25)
+                                      # ── VERIFY THẬT: đọc lại input_value, so số chữ số ──
                                       _val = ""
-                                      try: _val = loc.input_value()
-                                      except Exception: pass
-                                      if _val:
-                                          log(f"[{idx+1}] ✓ {field_name} OK [{src}] val={_val[:4]}***")
+                                      try:
+                                          _val = loc.input_value() or ""
+                                      except Exception:
+                                          _val = ""
+                                      _got_digits = "".join(c for c in _val if c.isdigit())
+                                      if _expected_digits and _got_digits == _expected_digits:
+                                          log(f"[{idx+1}] ✓ {field_name} VERIFY OK [{src}] ({_val})")
                                           return True
-                                      # Fallback: nếu input_value rỗng, vẫn coi thành công (Stripe masked)
-                                      log(f"[{idx+1}] ✓ {field_name} typed [{src}] (masked/no readback)")
-                                      return True
-                                  except Exception as _fe:
+                                      # Một số field (CVC ngắn) có thể đúng dù readback khác format
+                                      if _expected_digits and _got_digits and _got_digits.endswith(_expected_digits):
+                                          log(f"[{idx+1}] ✓ {field_name} OK [{src}] ({_val})")
+                                          return True
+                                      # input_value rỗng / khác → THẤT BẠI (không báo giả nữa)
+                                      log(f"[{idx+1}] ✗ {field_name} điền hụt [{src}] got='{_val}' (mong {len(_expected_digits)} số)")
+                                      return False
+                                  except Exception:
                                       return False
 
                               for _attempt in range(6):
+                                  # 0. Với CARD NUMBER: thử locator đã verify ready ở bước chờ render
+                                  if field_name == "Card number" and _card_loc is not None:
+                                      try:
+                                          if _do_fill(_card_loc, "card-loc(ready)"):
+                                              return True
+                                      except Exception:
+                                          pass
+
                                   # 1. Thử main page trước (checkout.stripe.com — toàn bộ trang là Stripe)
                                   for _sel in field_selectors:
                                       _loc = page.locator(_sel).first
@@ -840,14 +901,20 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # ── Điền Card Number ──────────────────────────────────
                           log(f"[{idx+1}] 💳 Điền card number...")
                           _ok_card = _wait_and_fill_frame(
-                              ['input[name="cardnumber"]', 'input[autocomplete*="cc-number"]',
-                               '[data-elements-stable-field-name="cardNumber"] input', 'input[placeholder*="1234"]'],
+                              ['input[name="cardnumber"]', 'input[autocomplete="cc-number"]',
+                               'input[autocomplete*="cc-number"]',
+                               '[data-elements-stable-field-name="cardNumber"] input', 'input[placeholder*="1234"]',
+                               'input#cardNumber', 'input[id*="cardNumber" i]'],
                               card_number, "Card number", type_delay=90, wait_ms=2500
                           )
                           if not _ok_card:
                               # Fallback Firefox cross-origin: mouse click iframe + keyboard
                               log(f"[{idx+1}] 💳 Card number: fallback mouse+keyboard...")
-                              _fill_card_via_mouse(card_number, "Card number", x_ratio=0.12)
+                              _ok_card = _fill_card_via_mouse(card_number, "Card number", x_ratio=0.12)
+                          if not _ok_card:
+                              # KHÔNG điền được card → KHÔNG bấm Pay (tránh báo thành công giả)
+                              log(f"[{idx+1}] ✗ Không điền được card number → retry reload (KHÔNG bấm Pay)")
+                              continue  # sang vòng _pay_retry (reload Stripe)
                           page.wait_for_timeout(1000)
 
                           # ── Điền Expiry (MM/YY) ───────────────────────────────
@@ -962,6 +1029,22 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                           # Đợi human-like sau khi điền xong phone trước khi bấm Pay
                           page.wait_for_timeout(2500)
+
+                          # ── VERIFY LẦN CUỐI: ô card vẫn còn đủ số trước khi bấm Pay ──
+                          # Tránh trường hợp form bị reset / clear ngầm → bấm Pay với card trống.
+                          _card_still_ok = True
+                          try:
+                              _vctx, _vloc = _find_card_input()
+                              if _vloc is not None:
+                                  _vval = "".join(c for c in (_vloc.input_value() or "") if c.isdigit())
+                                  _vexp = "".join(c for c in card_number if c.isdigit())
+                                  if _vexp and _vval != _vexp and not _vval.endswith(_vexp[-4:]):
+                                      _card_still_ok = False
+                                      log(f"[{idx+1}] ✗ Card bị mất giá trị trước khi Pay (got='{_vval}') → retry")
+                          except Exception:
+                              pass  # không đọc được = có thể đã chuyển trang, bỏ qua
+                          if not _card_still_ok:
+                              continue  # reload + điền lại
 
                           # ── Click "Pay and start trial" ───────────────────────
                           log(f"[{idx+1}] 🖱 Click 'Pay and start trial'...")
