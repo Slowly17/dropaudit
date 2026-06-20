@@ -1,5 +1,5 @@
 {
-  "version": "1.2.7",
+  "version": "1.2.8",
   "updated": "2026-06-20",
-  "notes": "loc the het han khi push vao queue: tu xoa + thong bao so the bi loai"
+  "notes": "xoa khoi queue khi captcha_blocked hoac payment_failed 3 lan; fix _keep_alive.wait -> .set"
 }

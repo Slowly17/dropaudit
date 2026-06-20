@@ -1443,6 +1443,9 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] 🔴 Đã đánh dấu proxy [{_ws_px_id}] captcha_blocked")
                               result_row["captcha_blocked"] = True
                               log(f"[{idx+1}] 🔴 Captcha blocked — đóng browser")
+                              _cidx = _current_card_row.get("_idx")
+                              if _cidx is not None:
+                                  queue_done(_cidx, "declined")
                               _keep_alive.set()
                               break
 
@@ -1655,14 +1658,20 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   continue
                               else:
                                   log(f"[{idx+1}] ❌ Thanh toán thất bại sau 3 lần — dừng")
-                                  _keep_alive.wait()
+                                  _cidx = _current_card_row.get("_idx")
+                                  if _cidx is not None:
+                                      queue_done(_cidx, "declined")
+                                  _keep_alive.set()
                                   break
 
                         # end for _pay_retry
 
                         if not _pay_success:
                             log(f"[{idx+1}] ⏹ DỪNG — automation kết thúc, browser giữ nguyên")
-                            _keep_alive.wait()  # chỉ block khi KHÔNG thành công
+                            _cidx = _current_card_row.get("_idx")
+                            if _cidx is not None:
+                                queue_done(_cidx, "declined")
+                            _keep_alive.set()
 
                     # Chỉ ghi success nếu thanh toán thực sự thành công
                     if _pay_success:
@@ -2364,7 +2373,7 @@ _data_queue: list[dict] = []   # [{...row, _idx, _status: pending/running/done/f
 _QUEUE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queue.json")
 
 # Statuses cần lưu lại (bỏ qua running → reset về pending khi load lại)
-_QUEUE_SAVE_STATUSES = ("pending", "failed", "declined", "running")
+_QUEUE_SAVE_STATUSES = ("pending", "failed", "running")
 
 def _queue_save_unlocked():
     """Ghi queue ra file. Gọi khi đang giữ _queue_lock."""
@@ -4355,6 +4364,9 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] 🔴 Đã đánh dấu proxy [{_ws_px_id}] captcha_blocked")
                               result_row["captcha_blocked"] = True
                               log(f"[{idx+1}] 🔴 Captcha blocked — đóng browser")
+                              _cidx = _current_card_row.get("_idx")
+                              if _cidx is not None:
+                                  queue_done(_cidx, "declined")
                               _keep_alive.set()
                               break
 
@@ -4567,14 +4579,20 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   continue
                               else:
                                   log(f"[{idx+1}] ❌ Thanh toán thất bại sau 3 lần — dừng")
-                                  _keep_alive.wait()
+                                  _cidx = _current_card_row.get("_idx")
+                                  if _cidx is not None:
+                                      queue_done(_cidx, "declined")
+                                  _keep_alive.set()
                                   break
 
                         # end for _pay_retry
 
                         if not _pay_success:
                             log(f"[{idx+1}] ⏹ DỪNG — automation kết thúc, browser giữ nguyên")
-                            _keep_alive.wait()  # chỉ block khi KHÔNG thành công
+                            _cidx = _current_card_row.get("_idx")
+                            if _cidx is not None:
+                                queue_done(_cidx, "declined")
+                            _keep_alive.set()
 
                     # Chỉ ghi success nếu thanh toán thực sự thành công
                     if _pay_success:
