@@ -369,7 +369,7 @@ def launch_browser(pid: str):
     if pid not in data["profiles"]: raise HTTPException(404, "Profile not found")
     if pid in active_sessions:      raise HTTPException(400, "Already running")
     profile = data["profiles"][pid]
-    active_sessions[pid] = {"alive": True, "status": "starting", "seed": None, "logs": deque(maxlen=200)}
+    active_sessions[pid] = {"alive": True, "status": "starting", "seed": None, "logs": deque(maxlen=200), "launched_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     t = threading.Thread(target=_launch_browser, args=(pid, profile), daemon=True)
     t.start()
     active_sessions[pid]["thread"] = t
@@ -384,9 +384,9 @@ def stop_browser(pid: str):
 @app.get("/api/profiles/{pid}/status")
 def get_status(pid: str):
     if pid not in active_sessions:
-        return {"status": "stopped", "seed": None, "logs": []}
+        return {"status": "stopped", "seed": None, "logs": [], "launched_at": None}
     sess = active_sessions[pid]
-    return {"status": sess.get("status", "unknown"), "seed": sess.get("seed"), "logs": list(sess.get("logs", []))}
+    return {"status": sess.get("status", "unknown"), "seed": sess.get("seed"), "logs": list(sess.get("logs", [])), "launched_at": sess.get("launched_at")}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BINARY
@@ -3290,7 +3290,7 @@ def launch_browser(pid: str):
     if pid not in data["profiles"]: raise HTTPException(404, "Profile not found")
     if pid in active_sessions:      raise HTTPException(400, "Already running")
     profile = data["profiles"][pid]
-    active_sessions[pid] = {"alive": True, "status": "starting", "seed": None, "logs": deque(maxlen=200)}
+    active_sessions[pid] = {"alive": True, "status": "starting", "seed": None, "logs": deque(maxlen=200), "launched_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     t = threading.Thread(target=_launch_browser, args=(pid, profile), daemon=True)
     t.start()
     active_sessions[pid]["thread"] = t
@@ -3305,9 +3305,9 @@ def stop_browser(pid: str):
 @app.get("/api/profiles/{pid}/status")
 def get_status(pid: str):
     if pid not in active_sessions:
-        return {"status": "stopped", "seed": None, "logs": []}
+        return {"status": "stopped", "seed": None, "logs": [], "launched_at": None}
     sess = active_sessions[pid]
-    return {"status": sess.get("status", "unknown"), "seed": sess.get("seed"), "logs": list(sess.get("logs", []))}
+    return {"status": sess.get("status", "unknown"), "seed": sess.get("seed"), "logs": list(sess.get("logs", [])), "launched_at": sess.get("launched_at")}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BINARY
