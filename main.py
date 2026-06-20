@@ -1350,22 +1350,34 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # ── Đợi tối thiểu 1s cho trang phản hồi ──
                           page.wait_for_timeout(1000)
 
-                          # ── SMART POLL: tối đa 30s ──────────────────────────────────
-                          log(f"[{idx+1}] 🔄 Smart poll sau Pay (tối đa 30s)...")
+                          # ── SMART POLL: không timeout cứng ──────────────────────────
+                          # Chỉ thoát khi:
+                          #   - Có kết quả rõ ràng (declined/failed/success/otp)
+                          #   - Challenge frame vẫn còn > CAPTCHA_BLOCK_AFTER giây sau khi đã click → captcha_blocked
+                          # KHÔNG bao giờ kết luận captcha_blocked chỉ vì hết thời gian
+                          # khi không có captcha frame nào — proxy chậm cần đợi lâu hơn.
+                          log(f"[{idx+1}] 🔄 Smart poll sau Pay (đợi đến khi có kết quả)...")
 
                           _payment_failed   = False
                           _card_declined    = False
                           _captcha_blocked  = False
                           _otp_required     = False
                           _captcha_clicked  = False
-                          _captcha_click_t  = None   # thời điểm click captcha lần đầu
+                          _captcha_click_t  = None
                           _poll_s           = _time.time()
-                          _POLL_MAX         = 30.0
-                          _CAPTCHA_BLOCK_AFTER = 20.0  # nếu challenge frame vẫn còn sau Xs kể từ lúc click → blocked
+                          _last_log_t       = _poll_s
+                          _CAPTCHA_BLOCK_AFTER = 25.0  # challenge frame còn sau 25s kể từ lúc click → blocked
 
-                          while _time.time() - _poll_s < _POLL_MAX:
+                          while True:
                               page.wait_for_timeout(800)
                               _elapsed = _time.time() - _poll_s
+
+                              # Log mỗi 10s để thấy vẫn đang chờ
+                              if _time.time() - _last_log_t >= 10.0:
+                                  _hc_now = _get_hcaptcha_frames()
+                                  _status_str = "captcha widget" if _hc_now else "chờ Stripe"
+                                  log(f"[{idx+1}] ⏳ Poll {_elapsed:.0f}s — {_status_str}...")
+                                  _last_log_t = _time.time()
 
                               # -- 0. OTP/3DS --
                               _3ds_frs = _get_3ds_frames()
@@ -1373,7 +1385,6 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] 🔐 OTP/3DS popup ({_3ds_frs[0].url[:60]}) ({_elapsed:.1f}s)")
                                   _otp_required = True
                                   break
-                              # DOM fallback OTP
                               try:
                                   _visa_src = page.evaluate("""
                                       () => {
@@ -1410,7 +1421,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   _pay_success = True
                                   break
 
-                              # -- 4. hCaptcha widget: click ngay nếu thấy lần đầu --
+                              # -- 4. hCaptcha widget: click ngay nếu thấy --
                               _wf = _get_widget_frames()
                               _ch = _get_challenge_frames()
 
@@ -1419,27 +1430,19 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       log(f"[{idx+1}] ✓ hCaptcha clicked ({_elapsed:.1f}s) — tiếp tục poll")
                                       _captcha_clicked = True
                                       _captcha_click_t = _time.time()
-                                  # không sleep thêm, tiếp tục poll ngay
 
-                              # -- 5. Challenge frame (image captcha) — đợi xem tự giải không --
+                              # -- 5. Challenge frame: chỉ blocked nếu vẫn còn SAU KHI đã click --
                               elif _ch:
                                   if _captcha_click_t and (_time.time() - _captcha_click_t > _CAPTCHA_BLOCK_AFTER):
-                                      log(f"[{idx+1}] 🚫 Challenge frame còn {_CAPTCHA_BLOCK_AFTER:.0f}s sau click → captcha_blocked")
+                                      log(f"[{idx+1}] 🚫 Challenge vẫn còn {_CAPTCHA_BLOCK_AFTER:.0f}s sau click → captcha_blocked")
                                       _captcha_blocked = True
                                       break
-                                  else:
-                                      log(f"[{idx+1}] 🔎 Challenge ({_elapsed:.1f}s) — chờ...")
-
-                          # -- Timeout: kết luận --
-                          if not any([_pay_success, _card_declined, _payment_failed, _otp_required, _captcha_blocked]):
-                              _hc_final = _get_hcaptcha_frames()
-                              _ch_final = _get_challenge_frames()
-                              if _ch_final or (_hc_final and not _captcha_clicked):
-                                  _captcha_blocked = True
-                                  log(f"[{idx+1}] 🚫 Timeout 30s — captcha vẫn còn → captcha_blocked")
-                              else:
-                                  _payment_failed = True
-                                  log(f"[{idx+1}] ⚠ Timeout 30s — không có kết quả → payment_failed")
+                                  # chưa click → thử click lại
+                                  elif not _captcha_click_t:
+                                      if _try_click_captcha_widget():
+                                          log(f"[{idx+1}] ✓ hCaptcha clicked (retry) ({_elapsed:.1f}s)")
+                                          _captcha_clicked = True
+                                          _captcha_click_t = _time.time()
 
                           # ── BƯỚC 4: Xử lý kết quả ──────────────────────────────────
 
