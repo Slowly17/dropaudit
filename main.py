@@ -1509,14 +1509,12 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                               # ── BƯỚC 4: Xử lý kết quả ──────────────────────────────────
 
-                              # ── OTP/3DS required: note card, F5, lấy thẻ kế ──────────────
+                              # ── OTP/3DS required: note thẻ → restart step 1 với row mới ──
                               if _otp_required:
-                                  _otp_card   = card_number
-                                  _cards_tried += 1
-                                  log(f"[{idx+1}] 🔐 OTP required — ghi note thẻ {_otp_card[:4]}**** & lấy thẻ kế")
+                                  log(f"[{idx+1}] 🔐 OTP/3DS — ghi note thẻ {card_number[:4]}**** & restart step 1")
                                   try:
                                       save_declined_record(
-                                          email, _otp_card, "OTP/3DS required", cardholder_name,
+                                          email, card_number, "OTP/3DS required", cardholder_name,
                                           password=password,
                                           exp_month=exp_month, exp_year=exp_year,
                                           cvv=cvv, address=address,
@@ -1524,65 +1522,16 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       )
                                   except Exception as _oe:
                                       log(f"[{idx+1}] ⚠ Lỗi ghi OTP record: {_oe}")
-                                  # Xóa card này khỏi queue
+                                  # Đánh dấu thẻ OTP trong queue
                                   try:
                                       _otp_cidx = _current_card_row.get("_idx")
                                       if _otp_cidx is not None:
                                           queue_done(_otp_cidx, "declined")
                                   except Exception:
                                       pass
-                                  if _cards_tried >= 5:
-                                      log(f"[{idx+1}] ⏹ Đã thử 5 thẻ — đóng phiên")
-                                      _keep_alive.set()
-                                      break
-                                  _next_row = queue_pop()
-                                  if not _next_row:
-                                      log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
-                                      _keep_alive.set()
-                                      break
-                                  _next_email = _next_row.get("email", "")
-                                  if _next_email:
-                                      log(f"[{idx+1}] 🗑 Bỏ mail '{_next_email}' (chỉ lấy card)")
-                                  try:
-                                      _ni = _next_row.get("_idx")
-                                      if _ni is not None:
-                                          queue_done(_ni, "consumed")
-                                  except Exception:
-                                      pass
-                                  _current_card_row = _next_row
-                                  _new_card_num = _next_row.get("card_number", "").strip().replace(" ", "")
-                                  _new_exp_m    = _next_row.get("exp_month", "").strip().zfill(2)
-                                  _new_exp_y    = _next_row.get("exp_year", "").strip()
-                                  _new_exp_y2   = _new_exp_y[-2:] if len(_new_exp_y) >= 2 else _new_exp_y
-                                  _new_mmyy     = f"{_new_exp_m}{_new_exp_y2}"
-                                  _new_cvv      = _next_row.get("cvv", "").strip()
-                                  _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
-                                  log(f"[{idx+1}] ➡ OTP thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
-                                  # F5 để thoát OTP popup, load lại trang checkout clean
-                                  try: page.reload(wait_until="domcontentloaded", timeout=30000)
-                                  except Exception: pass
-                                  try: page.wait_for_load_state("load", timeout=20000)
-                                  except Exception: pass
-                                  try: page.wait_for_load_state("networkidle", timeout=15000)
-                                  except Exception: pass
-                                  page.wait_for_timeout(3500)
-                                  # Cập nhật biến card
-                                  card_number     = _new_card_num
-                                  exp_month       = _new_exp_m
-                                  exp_year        = _new_exp_y
-                                  exp_year_2      = _new_exp_y2
-                                  exp_mmyy        = _new_mmyy
-                                  cvv             = _new_cvv
-                                  cardholder_name = _new_name
-                                  # Reset flags cho thẻ mới
-                                  _otp_required    = False
-                                  _card_declined   = False
-                                  _payment_failed  = False
-                                  _captcha_blocked = False
-                                  _pay_success     = False
-                                  _pf_count_ns.v   = 0
-                                  _skip_detect_fill = False
-                                  continue  # vòng _pay_retry: detect+fill thẻ mới
+                                  # Restart step 1 với row mới (email + thẻ mới hoàn toàn)
+                                  _need_restart = True
+                                  break  # thoát for _pay_retry → restart logic bên dưới
 
                               if _captcha_blocked:
                                   if _ws_px_id:
