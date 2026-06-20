@@ -1,5 +1,5 @@
 {
-  "version": "1.3.3",
+  "version": "1.3.4",
   "updated": "2026-06-20",
-  "notes": "fix captcha_blocked sai khi proxy cham: poll vo han den khi co ket qua ro rang; chi captcha_blocked khi challenge frame con > 25s SAU KHI da click widget; log moi 10s de trace"
+  "notes": "fix OTP/3DS (USAA/bank overlay) khong detect duoc: bo filter stripe.com khoi _get_3ds_frames, them DOM text check cho bank overlay; fix card number timeout sau F5: dung domcontentloaded+load+networkidle(15s)+wait3.5s thay vi networkidle(8s)"
 }

@@ -1313,6 +1313,8 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               return [fr for fr in _get_hcaptcha_frames() if 'challenge' not in fr.url]
 
                           def _get_3ds_frames():
+                              # Match: ACS/bank/3DS frames + Stripe's own 3DS2 frames
+                              # hooks.stripe.com/redirect hoặc stripe.com/.../3ds2 đều là 3DS
                               _otp_urls = ['3ds', 'acs', 'authentication', 'secure', 'challenge', 'otp',
                                            'netcetera', 'orbipay', 'verifiedbyvisa', 'mastercardsecurecode']
                               _results = []
@@ -1320,9 +1322,29 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   try:
                                       _fu = (_f.url or '').lower()
                                       if not _fu or _fu in ('about:blank', ''): continue
-                                      if 'stripe.com' in _fu or 'hcaptcha.com' in _fu: continue
-                                      if any(kw in _fu for kw in _otp_urls): _results.append(_f)
+                                      if 'hcaptcha.com' in _fu: continue
+                                      # Với stripe.com: CHỈ bỏ qua nếu không có 3DS keyword
+                                      if 'stripe.com' in _fu:
+                                          if not any(kw in _fu for kw in _otp_urls): continue
+                                      else:
+                                          if not any(kw in _fu for kw in _otp_urls): continue
+                                      _results.append(_f)
                                   except Exception: pass
+                              # Cũng check DOM text cho USAA/bank overlay (render trong stripe page)
+                              try:
+                                  _overlay_txt = page.evaluate("""
+                                      () => {
+                                          const body = (document.body && document.body.innerText) ? document.body.innerText.toLowerCase() : '';
+                                          const kws = ['verify your transaction', 'verify your identity',
+                                                       'authentication required', '3d secure', 'secure authentication',
+                                                       'card verification', 'confirm your identity'];
+                                          return kws.some(k => body.includes(k));
+                                      }
+                                  """)
+                                  if _overlay_txt and not _results:
+                                      # Trả về dummy frame để báo có 3DS
+                                      return [page.main_frame]
+                              except Exception: pass
                               return _results
 
                           def _try_click_captcha_widget():
@@ -1496,11 +1518,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
                               log(f"[{idx+1}] ➡ OTP thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
                               # F5 để thoát OTP popup, load lại trang checkout clean
-                              try: page.reload(wait_until="load", timeout=30000)
+                              try: page.reload(wait_until="domcontentloaded", timeout=30000)
                               except Exception: pass
-                              try: page.wait_for_load_state("networkidle", timeout=8000)
+                              try: page.wait_for_load_state("load", timeout=20000)
                               except Exception: pass
-                              page.wait_for_timeout(3000)
+                              try: page.wait_for_load_state("networkidle", timeout=15000)
+                              except Exception: pass
+                              page.wait_for_timeout(3500)
                               # Cập nhật biến card
                               card_number     = _new_card_num
                               exp_month       = _new_exp_m
@@ -1748,11 +1772,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] 🔄 F5 retry thẻ này lần {_pf_count}/3...")
                                   try: page.wait_for_load_state("load", timeout=15000)
                                   except Exception: pass
-                                  try: page.reload(wait_until="load", timeout=30000)
+                                  try: page.reload(wait_until="domcontentloaded", timeout=30000)
                                   except Exception: pass
-                                  try: page.wait_for_load_state("networkidle", timeout=8000)
+                                  try: page.wait_for_load_state("load", timeout=20000)
                                   except Exception: pass
-                                  page.wait_for_timeout(2500)
+                                  try: page.wait_for_load_state("networkidle", timeout=15000)
+                                  except Exception: pass
+                                  page.wait_for_timeout(3500)
                                   _payment_failed = False
                                   _skip_detect_fill = False  # detect+fill lại sau reload
                                   continue
@@ -1791,11 +1817,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               _new_cvv      = _next_row.get("cvv", "").strip()
                               _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
                               log(f"[{idx+1}] ➡ Thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
-                              try: page.reload(wait_until="load", timeout=30000)
+                              try: page.reload(wait_until="domcontentloaded", timeout=30000)
                               except Exception: pass
-                              try: page.wait_for_load_state("networkidle", timeout=8000)
+                              try: page.wait_for_load_state("load", timeout=20000)
                               except Exception: pass
-                              page.wait_for_timeout(2500)
+                              try: page.wait_for_load_state("networkidle", timeout=15000)
+                              except Exception: pass
+                              page.wait_for_timeout(3500)
                               card_number = _new_card_num; exp_month = _new_exp_m
                               exp_year = _new_exp_y; exp_year_2 = _new_exp_y2
                               exp_mmyy = _new_mmyy; cvv = _new_cvv; cardholder_name = _new_name
@@ -4457,12 +4485,33 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       _fu = (_f.url or '').lower()
                                       if not _fu or _fu in ('about:blank', ''):
                                           continue
-                                      if 'stripe.com' in _fu or 'hcaptcha.com' in _fu:
+                                      if 'hcaptcha.com' in _fu:
                                           continue
-                                      if any(kw in _fu for kw in _otp_urls):
-                                          _results.append(_f)
+                                      # Với stripe.com: CHỈ bỏ qua nếu không có 3DS keyword
+                                      if 'stripe.com' in _fu:
+                                          if not any(kw in _fu for kw in _otp_urls):
+                                              continue
+                                      else:
+                                          if not any(kw in _fu for kw in _otp_urls):
+                                              continue
+                                      _results.append(_f)
                                   except Exception:
                                       pass
+                              # Cũng check DOM text cho bank overlay trong stripe page
+                              try:
+                                  _overlay_txt = page.evaluate("""
+                                      () => {
+                                          const body = (document.body && document.body.innerText) ? document.body.innerText.toLowerCase() : '';
+                                          const kws = ['verify your transaction', 'verify your identity',
+                                                       'authentication required', '3d secure', 'secure authentication',
+                                                       'card verification', 'confirm your identity'];
+                                          return kws.some(k => body.includes(k));
+                                      }
+                                  """)
+                                  if _overlay_txt and not _results:
+                                      return [page.main_frame]
+                              except Exception:
+                                  pass
                               return _results
 
                           # ── Đợi proxy load sau khi click Pay (proxy yếu cần thêm thời gian) ──
@@ -4660,11 +4709,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
                               log(f"[{idx+1}] ➡ OTP thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
                               # F5 để thoát OTP popup, load lại trang checkout clean
-                              try: page.reload(wait_until="load", timeout=30000)
+                              try: page.reload(wait_until="domcontentloaded", timeout=30000)
                               except Exception: pass
-                              try: page.wait_for_load_state("networkidle", timeout=8000)
+                              try: page.wait_for_load_state("load", timeout=20000)
                               except Exception: pass
-                              page.wait_for_timeout(3000)
+                              try: page.wait_for_load_state("networkidle", timeout=15000)
+                              except Exception: pass
+                              page.wait_for_timeout(3500)
                               # Cập nhật biến card
                               card_number     = _new_card_num
                               exp_month       = _new_exp_m
