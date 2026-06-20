@@ -658,77 +658,90 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                         exp_year_2 = exp_year[-2:] if len(exp_year) >= 2 else exp_year
                         exp_mmyy   = f"{exp_month}{exp_year_2}"
                         _need_restart = False
-                        log(f"[{idx+1}] {'▶ Signup lần đầu' if _restart_count == 0 else f'🔄 Restart lần {_restart_count}/2'}: {email} | {card_number[:4] if card_number else '—'}****")
+                        log(f"[{idx+1}] {'▶ Signup lần đầu' if _restart_count == 0 else f'🔄 Restart lần {_restart_count}/3'}: {email} | {card_number[:4] if card_number else '—'}****")
 
                         # ── STEP 1: Đăng ký ────────────────────────────────────────
-                        log(f"[{idx+1}] → dropaudit.com/signup")
-                        # Proxy yếu: tăng timeout goto lên 90s, wait networkidle
-                        try:
-                            page.goto("https://dropaudit.com/signup", wait_until="domcontentloaded", timeout=90000)
-                        except Exception as _ge:
-                            log(f"[{idx+1}] ⚠ goto timeout/err: {_ge} — thử tiếp")
-
-                        # Chờ field email xuất hiện tối đa 45s
-                        log(f"[{idx+1}] ⏳ Chờ form đăng ký load (45s)...")
-                        page.wait_for_selector('input[type="email"]', timeout=45000)
-                        page.wait_for_timeout(1500)  # đợi JS hydrate xong
-
-                        # Điền email
-                        el = page.query_selector('input[type="email"]')
-                        if el:
-                            el.click()
-                            page.wait_for_timeout(300)
-                            el.fill("")
-                            el.type(email, delay=80)
-                            log(f"[{idx+1}] ✓ Email đã điền")
-                        else:
-                            log(f"[{idx+1}] ⚠ Không tìm thấy field email")
-
-                        page.wait_for_timeout(500)
-
-                        # Điền password
-                        el = page.query_selector('input[type="password"]')
-                        if el:
-                            el.click()
-                            page.wait_for_timeout(300)
-                            el.fill("")
-                            el.type(password, delay=80)
-                            log(f"[{idx+1}] ✓ Password đã điền")
-                        else:
-                            log(f"[{idx+1}] ⚠ Không tìm thấy field password")
-
-                        page.wait_for_timeout(800)
-
-                        # Click Create Account — chờ selector xuất hiện trước
-                        log(f"[{idx+1}] ⏳ Chờ nút Create Account...")
-                        page.wait_for_selector('button:has-text("Create Account")', timeout=20000)
-                        page.wait_for_timeout(500)
-
-                        # Bắt response signup để phát hiện lỗi 422 (email/password bị từ chối)
-                        _signup_status = [None]
-                        def _on_signup_resp(r):
+                        # Nếu restart: kiểm tra page hiện tại có "Start My Trial" chưa
+                        # (account vừa tạo vẫn còn session) → skip signup, dùng luôn
+                        _skip_signup = False
+                        if _restart_count > 0:
                             try:
-                                if "auth/v1/signup" in r.url:
-                                    _signup_status[0] = r.status
+                                _trial_check = page.query_selector('button:has-text("Start My Trial")')
+                                if _trial_check:
+                                    _skip_signup = True
+                                    log(f"[{idx+1}] ♻ Session cũ vẫn còn — bỏ qua signup, click Start My Trial ngay")
                             except Exception:
                                 pass
-                        page.on("response", _on_signup_resp)
 
-                        page.click('button:has-text("Create Account")')
-                        log(f"[{idx+1}] ✓ Clicked Create Account")
-                        page.wait_for_timeout(3500)  # chờ API trả về
+                        if not _skip_signup:
+                            log(f"[{idx+1}] → dropaudit.com/signup")
+                            # Proxy yếu: tăng timeout goto lên 90s, wait networkidle
+                            try:
+                                page.goto("https://dropaudit.com/signup", wait_until="domcontentloaded", timeout=90000)
+                            except Exception as _ge:
+                                log(f"[{idx+1}] ⚠ goto timeout/err: {_ge} — thử tiếp")
 
-                        # Kiểm tra kết quả signup
-                        if _signup_status[0] is not None and _signup_status[0] >= 400:
-                            log(f"[{idx+1}] ✗ Đăng ký BỊ TỪ CHỐI (HTTP {_signup_status[0]}). "
-                                f"Email có thể không hợp lệ/đã tồn tại HOẶC password quá yếu. "
-                                f"→ Dùng email thật (vd outlook/email mua) + password mạnh (chữ hoa+thường+số+ký tự đặc biệt, ≥10 ký tự).")
-                            result_row["status"] = f"signup_failed_{_signup_status[0]}"
+                            # Chờ field email xuất hiện tối đa 45s
+                            log(f"[{idx+1}] ⏳ Chờ form đăng ký load (45s)...")
+                            page.wait_for_selector('input[type="email"]', timeout=45000)
+                            page.wait_for_timeout(1500)  # đợi JS hydrate xong
+
+                            # Điền email
+                            el = page.query_selector('input[type="email"]')
+                            if el:
+                                el.click()
+                                page.wait_for_timeout(300)
+                                el.fill("")
+                                el.type(email, delay=80)
+                                log(f"[{idx+1}] ✓ Email đã điền")
+                            else:
+                                log(f"[{idx+1}] ⚠ Không tìm thấy field email")
+
+                            page.wait_for_timeout(500)
+
+                            # Điền password
+                            el = page.query_selector('input[type="password"]')
+                            if el:
+                                el.click()
+                                page.wait_for_timeout(300)
+                                el.fill("")
+                                el.type(password, delay=80)
+                                log(f"[{idx+1}] ✓ Password đã điền")
+                            else:
+                                log(f"[{idx+1}] ⚠ Không tìm thấy field password")
+
+                            page.wait_for_timeout(800)
+
+                            # Click Create Account — chờ selector xuất hiện trước
+                            log(f"[{idx+1}] ⏳ Chờ nút Create Account...")
+                            page.wait_for_selector('button:has-text("Create Account")', timeout=20000)
+                            page.wait_for_timeout(500)
+
+                            # Bắt response signup để phát hiện lỗi 422 (email/password bị từ chối)
+                            _signup_status = [None]
+                            def _on_signup_resp(r):
+                                try:
+                                    if "auth/v1/signup" in r.url:
+                                        _signup_status[0] = r.status
+                                except Exception:
+                                    pass
+                            page.on("response", _on_signup_resp)
+
+                            page.click('button:has-text("Create Account")')
+                            log(f"[{idx+1}] ✓ Clicked Create Account")
+                            page.wait_for_timeout(3500)  # chờ API trả về
+
+                            # Kiểm tra kết quả signup
+                            if _signup_status[0] is not None and _signup_status[0] >= 400:
+                                log(f"[{idx+1}] ✗ Đăng ký BỊ TỪ CHỐI (HTTP {_signup_status[0]}). "
+                                    f"Email có thể không hợp lệ/đã tồn tại HOẶC password quá yếu. "
+                                    f"→ Dùng email thật (vd outlook/email mua) + password mạnh (chữ hoa+thường+số+ký tự đặc biệt, ≥10 ký tự).")
+                                result_row["status"] = f"signup_failed_{_signup_status[0]}"
+                                try: page.remove_listener("response", _on_signup_resp)
+                                except Exception: pass
+                                raise RuntimeError(f"Signup HTTP {_signup_status[0]}")
                             try: page.remove_listener("response", _on_signup_resp)
                             except Exception: pass
-                            raise RuntimeError(f"Signup HTTP {_signup_status[0]}")
-                        try: page.remove_listener("response", _on_signup_resp)
-                        except Exception: pass
 
                         # Đợi React re-render xong — nút Start My Trial xuất hiện tối đa 45s
                         log(f"[{idx+1}] ⏳ Đợi Start My Trial button (45s)...")
