@@ -637,8 +637,30 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                     _stop_flag = [False]
                     running_tasks[tid]["_keep_alive"] = _keep_alive  # expose để stop_task có thể set()
 
-                    # ── STEP 1: Đăng ký ────────────────────────────────────────
-                    if True:  # luôn chạy signup
+                    # ── Restart loop (tối đa 3 lần signup trong 1 browser session) ──
+                    _current_signup_row = row  # row đang dùng cho lần signup này
+                    _need_restart = False
+
+                    for _restart_count in range(3):
+                        # Re-load email/thẻ từ _current_signup_row mỗi lần (restart dùng row mới)
+                        _sr = _current_signup_row
+                        email    = _sr.get("email", "").strip() or _random_email()
+                        password = _sr.get("password", "").strip() or _random_password(12)
+                        card_number     = _sr.get("card_number", "").strip().replace(" ", "")
+                        exp_month       = _sr.get("exp_month", "").strip().zfill(2)
+                        exp_year        = _sr.get("exp_year", "").strip()
+                        cvv             = _sr.get("cvv", "").strip()
+                        cardholder_name = _sr.get("cardholder_name", "").strip()
+                        address         = _sr.get("address", "").strip()
+                        city            = _sr.get("city", "").strip()
+                        state           = _sr.get("state", "").strip()
+                        zip_code        = _sr.get("zip", "").strip()
+                        exp_year_2 = exp_year[-2:] if len(exp_year) >= 2 else exp_year
+                        exp_mmyy   = f"{exp_month}{exp_year_2}"
+                        _need_restart = False
+                        log(f"[{idx+1}] {'▶ Signup lần đầu' if _restart_count == 0 else f'🔄 Restart lần {_restart_count}/2'}: {email} | {card_number[:4] if card_number else '—'}****")
+
+                        # ── STEP 1: Đăng ký ────────────────────────────────────────
                         log(f"[{idx+1}] → dropaudit.com/signup")
                         # Proxy yếu: tăng timeout goto lên 90s, wait networkidle
                         try:
@@ -729,9 +751,9 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 2: Stripe Checkout ─────────────────────────────────
                     if card_number:
                         _pay_success = False
-                        # 1 phiên = 1 mail/pass + tối đa 5 thẻ
+                        # 1 phiên = 1 mail/pass + tối đa N thẻ (card_declined path)
                         # _current_card_row: thẻ đang dùng (chỉ lấy card info, mail/pass giữ nguyên)
-                        _current_card_row = row
+                        _current_card_row = _current_signup_row
                         _cards_tried = 0  # đếm số thẻ đã thử trong phiên này
                         _skip_detect_fill = False  # True khi đã clear+fill trực tiếp, bỏ qua detect+điền
                         import types as _types
@@ -1784,82 +1806,43 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               continue
 
                           if _payment_failed:
-                              # Đếm số lần failed cho thẻ NÀY (không phải global retry)
-                              _pf_count = getattr(_pf_count_ns, 'v', 0) + 1
-                              _pf_count_ns.v = _pf_count
-                              if _pf_count < 3:
-                                  log(f"[{idx+1}] 🔄 F5 retry thẻ này lần {_pf_count}/3...")
-                                  try: page.wait_for_load_state("load", timeout=15000)
-                                  except Exception: pass
-                                  try: page.reload(wait_until="domcontentloaded", timeout=30000)
-                                  except Exception: pass
-                                  try: page.wait_for_load_state("load", timeout=20000)
-                                  except Exception: pass
-                                  try: page.wait_for_load_state("networkidle", timeout=15000)
-                                  except Exception: pass
-                                  page.wait_for_timeout(3500)
-                                  _payment_failed = False
-                                  _skip_detect_fill = False  # detect+fill lại sau reload
-                                  continue
-                              # Hết 3 lần F5 với thẻ này → skip sang thẻ kế
-                              log(f"[{idx+1}] ⚠ Thẻ {card_number[:4]}**** failed 3 lần — skip sang thẻ kế")
-                              _cards_tried += 1
-                              try:
-                                  save_declined_record(
-                                      email, card_number, "Payment failed (3 lần F5)", cardholder_name,
-                                      password=password, exp_month=exp_month, exp_year=exp_year,
-                                      cvv=cvv, address=address, city=city, state=state, zip_code=zip_code
-                                  )
-                              except Exception: pass
-                              _cidx = _current_card_row.get("_idx")
-                              if _cidx is not None:
-                                  queue_done(_cidx, "declined")
-                              if _cards_tried >= 5:
-                                  log(f"[{idx+1}] ⏹ Đã thử 5 thẻ — đóng phiên")
-                                  _keep_alive.set(); break
-                              _next_row = queue_pop()
-                              if not _next_row:
-                                  log(f"[{idx+1}] ⏹ Hết thẻ trong queue — đóng phiên")
-                                  _keep_alive.set(); break
-                              _next_email = _next_row.get("email", "")
-                              if _next_email: log(f"[{idx+1}] 🗑 Bỏ mail '{_next_email}' (chỉ lấy card)")
-                              try:
-                                  _ni = _next_row.get("_idx")
-                                  if _ni is not None: queue_done(_ni, "consumed")
-                              except Exception: pass
-                              _current_card_row = _next_row
-                              _new_card_num = _next_row.get("card_number", "").strip().replace(" ", "")
-                              _new_exp_m    = _next_row.get("exp_month", "").strip().zfill(2)
-                              _new_exp_y    = _next_row.get("exp_year", "").strip()
-                              _new_exp_y2   = _new_exp_y[-2:] if len(_new_exp_y) >= 2 else _new_exp_y
-                              _new_mmyy     = f"{_new_exp_m}{_new_exp_y2}"
-                              _new_cvv      = _next_row.get("cvv", "").strip()
-                              _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
-                              log(f"[{idx+1}] ➡ Thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
-                              try: page.reload(wait_until="domcontentloaded", timeout=30000)
-                              except Exception: pass
-                              try: page.wait_for_load_state("load", timeout=20000)
-                              except Exception: pass
-                              try: page.wait_for_load_state("networkidle", timeout=15000)
-                              except Exception: pass
-                              page.wait_for_timeout(3500)
-                              card_number = _new_card_num; exp_month = _new_exp_m
-                              exp_year = _new_exp_y; exp_year_2 = _new_exp_y2
-                              exp_mmyy = _new_mmyy; cvv = _new_cvv; cardholder_name = _new_name
-                              _payment_failed = False; _card_declined = False
-                              _captcha_blocked = False; _pay_success = False
-                              _pf_count_ns.v = 0  # reset counter cho thẻ mới
-                              _skip_detect_fill = False
-                              continue
+                              # payment_failed = Stripe báo lỗi → skip hàng này, KHÔNG xoá queue
+                              # Restart step 1 với email+thẻ mới từ queue
+                              log(f"[{idx+1}] ⚠ Payment failed — skip hàng này, restart step 1 với row mới")
+                              _need_restart = True
+                              break  # thoát for _pay_retry → xử lý restart ở bên dưới
 
                         # end for _pay_retry
 
-                        if not _pay_success:
-                            log(f"[{idx+1}] ⏹ DỪNG — automation kết thúc, browser giữ nguyên")
-                            _cidx = _current_card_row.get("_idx")
-                            if _cidx is not None:
-                                queue_done(_cidx, "declined")
+                        # ── Xử lý sau khi thoát _pay_retry loop ──
+                        if _pay_success:
+                            # Thành công → thoát restart loop ngay
+                            break  # break for _restart_count
+
+                        if _need_restart:
+                            # payment_failed hoặc lỗi unhandled → lấy row mới, restart step 1
+                            _next_restart_row = queue_pop()
+                            if not _next_restart_row:
+                                log(f"[{idx+1}] ⏹ Hết queue — không thể restart, đóng phiên")
+                                _keep_alive.set()
+                                break  # break for _restart_count
+                            _current_signup_row = _next_restart_row
+                            _n_email = _next_restart_row.get("email", "")
+                            _n_card  = _next_restart_row.get("card_number", "")[:4]
+                            log(f"[{idx+1}] 🔄 Restart step 1 (lần {_restart_count+1}/2) — row mới: {_n_email} | {_n_card}****")
+                            # continue for _restart_count (tự động sang lần kế)
+                            if _restart_count == 2:
+                                # Lần restart cuối cùng vẫn fail → đóng phiên
+                                log(f"[{idx+1}] ⏹ Đã restart 3 lần — đóng phiên")
+                                _keep_alive.set()
+                        else:
+                            # Không cần restart (captcha_blocked, card_declined hết thẻ, hoặc hết _pay_retry)
+                            # queue_done đã được xử lý trong các path tương ứng
+                            if not _captcha_blocked and not _pay_success:
+                                log(f"[{idx+1}] ⏹ DỪNG — automation kết thúc, browser giữ nguyên")
                             _keep_alive.set()
+                            break  # break for _restart_count
+                    # end for _restart_count
 
                     # Chỉ ghi success nếu thanh toán thực sự thành công
                     if _pay_success:

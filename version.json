@@ -1,5 +1,5 @@
 {
-  "version": "1.3.5",
+  "version": "1.3.6",
   "updated": "2026-06-20",
-  "notes": "fix card timeout sau F5 (bug nang): _do_fill timeout 2s thay 8s, bat navigation exception tra ve False ngay; them URL-change detect trong fill loop de doi load xong truoc khi dien"
+  "notes": "refactor payment_failed logic: bo F5 retry, payment_failed -> skip hang (khong queue_done) + restart step 1 voi row moi tu queue; toi da 3 lan restart trong 1 browser session; card_declined van giu nguyen (clear+fill the ke cung session)"
 }
