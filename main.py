@@ -1289,7 +1289,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # Success = URL rời khỏi checkout.stripe.com (redirect về trang merchant).
 
                           def _get_page_text():
-                              """Gom text từ main page + tất cả frames."""
+                              """Gom text từ main page + Stripe frames (BỎ hcaptcha frames để tránh false positive)."""
                               _texts = []
                               try:
                                   _texts.append(page.inner_text('body').lower())
@@ -1297,6 +1297,10 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   pass
                               for _f in page.frames:
                                   try:
+                                      _furl = _f.url or ''
+                                      # Bỏ qua hcaptcha frames — chúng chứa text misleading
+                                      if 'hcaptcha.com' in _furl:
+                                          continue
                                       _texts.append(_f.inner_text('body').lower())
                                   except Exception:
                                       pass
@@ -1322,6 +1326,25 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                           def _get_widget_frames():
                               return [fr for fr in _get_hcaptcha_frames() if 'challenge' not in fr.url]
+
+                          def _get_3ds_frames():
+                              """Detect popup OTP/3DS: ACS iframe, Stripe 3DS iframe, bank popup."""
+                              _otp_urls = ['3ds', 'acs', 'authentication', 'secure', 'challenge', 'otp',
+                                           'netcetera', 'orbipay', 'verifiedbyvisa', 'mastercardsecurecode']
+                              _results = []
+                              for _f in page.frames:
+                                  try:
+                                      _fu = (_f.url or '').lower()
+                                      if not _fu or _fu in ('about:blank', ''):
+                                          continue
+                                      # Bỏ Stripe + hcaptcha frames
+                                      if 'stripe.com' in _fu or 'hcaptcha.com' in _fu:
+                                          continue
+                                      if any(kw in _fu for kw in _otp_urls):
+                                          _results.append(_f)
+                                  except Exception:
+                                      pass
+                              return _results
 
                           # ── Đợi proxy load sau khi click Pay (proxy yếu cần thêm thời gian) ──
                           log(f"[{idx+1}] ⏳ Đợi trang phản hồi sau Pay (3s)...")
@@ -1385,12 +1408,39 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           _card_declined   = False
                           _captcha_blocked = False
                           _captcha_skipped = False
+                          _otp_required    = False
                           _poll_s          = _time.time()
                           _POLL_MAX        = 25.0
 
                           while _time.time() - _poll_s < _POLL_MAX:
                               page.wait_for_timeout(1000)
                               _elapsed = _time.time() - _poll_s
+
+                              # -- 0. Check OTP/3DS popup TRƯỚC TIÊN ──────────────────
+                              # OTP popup = iframe từ ACS/bank/3DS, không phải hcaptcha/stripe
+                              _3ds_frs = _get_3ds_frames()
+                              if not _otp_required and _3ds_frs:
+                                  log(f"[{idx+1}] 🔐 Phát hiện OTP/3DS popup ({_3ds_frs[0].url[:60]}) — note thẻ & lấy thẻ kế")
+                                  _otp_required = True
+                                  break
+
+                              # Ngoài ra, detect VISA popup bằng visible overlay/modal trên main page
+                              try:
+                                  _visa_overlay = page.evaluate("""
+                                      () => {
+                                          const modal = document.querySelector(
+                                              'iframe[src*="acs"], iframe[src*="3ds"], iframe[src*="authentication"], ' +
+                                              'iframe[src*="secure"], iframe[src*="otp"], iframe[src*="challenge"]'
+                                          );
+                                          return modal ? modal.src : null;
+                                      }
+                                  """)
+                                  if _visa_overlay and not _otp_required:
+                                      log(f"[{idx+1}] 🔐 Phát hiện OTP iframe (DOM): {str(_visa_overlay)[:60]} — note thẻ & lấy thẻ kế")
+                                      _otp_required = True
+                                      break
+                              except Exception:
+                                  pass
 
                               # -- 1. Check error text TRƯỚC (quan trọng nhất) --
                               _txt = _get_page_text()
@@ -1428,20 +1478,91 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] 🔎 Widget frame còn ({_elapsed:.1f}s) — chờ Stripe...")
 
                           # -- Kết luận sau poll --
-                          if not _pay_success and not _card_declined and not _payment_failed:
+                          if not _pay_success and not _card_declined and not _payment_failed and not _otp_required:
                               # Hết 25s không ra kết quả gì
                               _hc_final = _get_hcaptcha_frames()
                               _ch_final = _get_challenge_frames()
                               if _ch_final or (_hc_final and not _captcha_skipped):
-                                  # hCaptcha vẫn còn trên trang VÀ chưa từng skip → bị bắt giải
                                   _captcha_blocked = True
                                   log(f"[{idx+1}] 🚫 Hết 25s — hCaptcha vẫn còn, không có kết quả → captcha_blocked")
                               else:
-                                  # hCaptcha đã skip nhưng Stripe không trả kết quả → treat as failed
                                   _payment_failed = True
                                   log(f"[{idx+1}] ⚠ Hết 25s — hCaptcha skip nhưng không có kết quả Stripe → failed")
 
                           # ── BƯỚC 4: Xử lý kết quả ──────────────────────────────────
+
+                          # ── OTP/3DS required: note card, F5, lấy thẻ kế ──────────────
+                          if _otp_required:
+                              _otp_card   = card_number
+                              _cards_tried += 1
+                              log(f"[{idx+1}] 🔐 OTP required — ghi note thẻ {_otp_card[:4]}**** & lấy thẻ kế")
+                              try:
+                                  save_declined_record(
+                                      email, _otp_card, "OTP/3DS required", cardholder_name,
+                                      password=password,
+                                      exp_month=exp_month, exp_year=exp_year,
+                                      cvv=cvv, address=address,
+                                      city=city, state=state, zip_code=zip_code
+                                  )
+                              except Exception as _oe:
+                                  log(f"[{idx+1}] ⚠ Lỗi ghi OTP record: {_oe}")
+                              # Xóa card này khỏi queue
+                              try:
+                                  _otp_cidx = _current_card_row.get("_idx")
+                                  if _otp_cidx is not None:
+                                      queue_done(_otp_cidx, "declined")
+                              except Exception:
+                                  pass
+                              if _cards_tried >= 5:
+                                  log(f"[{idx+1}] ⏹ Đã thử 5 thẻ — đóng phiên")
+                                  _keep_alive.set()
+                                  break
+                              _next_row = queue_pop()
+                              if not _next_row:
+                                  log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
+                                  _keep_alive.set()
+                                  break
+                              _next_email = _next_row.get("email", "")
+                              if _next_email:
+                                  log(f"[{idx+1}] 🗑 Bỏ mail '{_next_email}' (chỉ lấy card)")
+                              try:
+                                  _ni = _next_row.get("_idx")
+                                  if _ni is not None:
+                                      queue_done(_ni, "consumed")
+                              except Exception:
+                                  pass
+                              _current_card_row = _next_row
+                              _new_card_num = _next_row.get("card_number", "").strip().replace(" ", "")
+                              _new_exp_m    = _next_row.get("exp_month", "").strip().zfill(2)
+                              _new_exp_y    = _next_row.get("exp_year", "").strip()
+                              _new_exp_y2   = _new_exp_y[-2:] if len(_new_exp_y) >= 2 else _new_exp_y
+                              _new_mmyy     = f"{_new_exp_m}{_new_exp_y2}"
+                              _new_cvv      = _next_row.get("cvv", "").strip()
+                              _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
+                              log(f"[{idx+1}] ➡ OTP thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
+                              # F5 để thoát OTP popup, load lại trang checkout clean
+                              try: page.reload(wait_until="load", timeout=30000)
+                              except Exception: pass
+                              try: page.wait_for_load_state("networkidle", timeout=8000)
+                              except Exception: pass
+                              page.wait_for_timeout(3000)
+                              # Cập nhật biến card
+                              card_number     = _new_card_num
+                              exp_month       = _new_exp_m
+                              exp_year        = _new_exp_y
+                              exp_year_2      = _new_exp_y2
+                              exp_mmyy        = _new_mmyy
+                              cvv             = _new_cvv
+                              cardholder_name = _new_name
+                              # Reset flags
+                              _otp_required    = False
+                              _card_declined   = False
+                              _payment_failed  = False
+                              _captcha_blocked = False
+                              _pay_success     = False
+                              _skip_detect_fill = False  # fill lại từ đầu sau reload
+                              continue  # vòng _pay_retry: detect+fill thẻ mới
+
                           if _captcha_blocked:
                               if _ws_px_id:
                                   flag_proxy_captcha(_ws_px_id)
@@ -1552,8 +1673,34 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       log(f"[{idx+1}] ✗ {fname} clear+fill lỗi: {_cfe}")
                                       return False
 
-                              # Đợi trang ổn định (animation declined message xong)
-                              page.wait_for_timeout(1500)
+                              # Đợi field card re-enable sau declined (Stripe lock field 1-3s)
+                              import time as _twait
+                              _field_selectors = [
+                                  'input[name="cardnumber"]', 'input[autocomplete="cc-number"]',
+                                  'input[autocomplete*="cc-number"]', 'input[placeholder*="1234"]',
+                                  'input#cardNumber'
+                              ]
+                              _field_enabled = False
+                              _wait_t0 = _twait.time()
+                              while _twait.time() - _wait_t0 < 10:
+                                  for _fsel in _field_selectors:
+                                      try:
+                                          _fl = page.locator(_fsel).first
+                                          _fl.wait_for(state="visible", timeout=1500)
+                                          _is_disabled = page.evaluate(f'() => {{ const el = document.querySelector("{_fsel}"); return el ? el.disabled : true; }}')
+                                          if not _is_disabled:
+                                              _field_enabled = True
+                                              break
+                                      except Exception:
+                                          pass
+                                  if _field_enabled:
+                                      break
+                                  page.wait_for_timeout(700)
+                              if _field_enabled:
+                                  log(f"[{idx+1}] ✓ Card field đã re-enable ({_twait.time()-_wait_t0:.1f}s)")
+                              else:
+                                  log(f"[{idx+1}] ⚠ Card field vẫn disabled sau 10s — thử fill anyway")
+                              page.wait_for_timeout(300)
 
                               # ── Clear + fill Card Number ──
                               _cf_card_ok = False
@@ -4264,7 +4411,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # Success = URL rời khỏi checkout.stripe.com (redirect về trang merchant).
 
                           def _get_page_text():
-                              """Gom text từ main page + tất cả frames."""
+                              """Gom text từ main page + Stripe frames (BỎ hcaptcha frames để tránh false positive)."""
                               _texts = []
                               try:
                                   _texts.append(page.inner_text('body').lower())
@@ -4272,6 +4419,9 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   pass
                               for _f in page.frames:
                                   try:
+                                      _furl = _f.url or ''
+                                      if 'hcaptcha.com' in _furl:
+                                          continue
                                       _texts.append(_f.inner_text('body').lower())
                                   except Exception:
                                       pass
@@ -4297,6 +4447,24 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                           def _get_widget_frames():
                               return [fr for fr in _get_hcaptcha_frames() if 'challenge' not in fr.url]
+
+                          def _get_3ds_frames():
+                              """Detect popup OTP/3DS: ACS iframe, Stripe 3DS iframe, bank popup."""
+                              _otp_urls = ['3ds', 'acs', 'authentication', 'secure', 'challenge', 'otp',
+                                           'netcetera', 'orbipay', 'verifiedbyvisa', 'mastercardsecurecode']
+                              _results = []
+                              for _f in page.frames:
+                                  try:
+                                      _fu = (_f.url or '').lower()
+                                      if not _fu or _fu in ('about:blank', ''):
+                                          continue
+                                      if 'stripe.com' in _fu or 'hcaptcha.com' in _fu:
+                                          continue
+                                      if any(kw in _fu for kw in _otp_urls):
+                                          _results.append(_f)
+                                  except Exception:
+                                      pass
+                              return _results
 
                           # ── Đợi proxy load sau khi click Pay (proxy yếu cần thêm thời gian) ──
                           log(f"[{idx+1}] ⏳ Đợi trang phản hồi sau Pay (3s)...")
@@ -4360,12 +4528,39 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           _card_declined   = False
                           _captcha_blocked = False
                           _captcha_skipped = False
+                          _otp_required    = False
                           _poll_s          = _time.time()
                           _POLL_MAX        = 25.0
 
                           while _time.time() - _poll_s < _POLL_MAX:
                               page.wait_for_timeout(1000)
                               _elapsed = _time.time() - _poll_s
+
+                              # -- 0. Check OTP/3DS popup TRƯỚC TIÊN ──────────────────
+                              # OTP popup = iframe từ ACS/bank/3DS, không phải hcaptcha/stripe
+                              _3ds_frs = _get_3ds_frames()
+                              if not _otp_required and _3ds_frs:
+                                  log(f"[{idx+1}] 🔐 Phát hiện OTP/3DS popup ({_3ds_frs[0].url[:60]}) — note thẻ & lấy thẻ kế")
+                                  _otp_required = True
+                                  break
+
+                              # Ngoài ra, detect VISA popup bằng visible overlay/modal trên main page
+                              try:
+                                  _visa_overlay = page.evaluate("""
+                                      () => {
+                                          const modal = document.querySelector(
+                                              'iframe[src*="acs"], iframe[src*="3ds"], iframe[src*="authentication"], ' +
+                                              'iframe[src*="secure"], iframe[src*="otp"], iframe[src*="challenge"]'
+                                          );
+                                          return modal ? modal.src : null;
+                                      }
+                                  """)
+                                  if _visa_overlay and not _otp_required:
+                                      log(f"[{idx+1}] 🔐 Phát hiện OTP iframe (DOM): {str(_visa_overlay)[:60]} — note thẻ & lấy thẻ kế")
+                                      _otp_required = True
+                                      break
+                              except Exception:
+                                  pass
 
                               # -- 1. Check error text TRƯỚC (quan trọng nhất) --
                               _txt = _get_page_text()
@@ -4403,20 +4598,91 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] 🔎 Widget frame còn ({_elapsed:.1f}s) — chờ Stripe...")
 
                           # -- Kết luận sau poll --
-                          if not _pay_success and not _card_declined and not _payment_failed:
+                          if not _pay_success and not _card_declined and not _payment_failed and not _otp_required:
                               # Hết 25s không ra kết quả gì
                               _hc_final = _get_hcaptcha_frames()
                               _ch_final = _get_challenge_frames()
                               if _ch_final or (_hc_final and not _captcha_skipped):
-                                  # hCaptcha vẫn còn trên trang VÀ chưa từng skip → bị bắt giải
                                   _captcha_blocked = True
                                   log(f"[{idx+1}] 🚫 Hết 25s — hCaptcha vẫn còn, không có kết quả → captcha_blocked")
                               else:
-                                  # hCaptcha đã skip nhưng Stripe không trả kết quả → treat as failed
                                   _payment_failed = True
                                   log(f"[{idx+1}] ⚠ Hết 25s — hCaptcha skip nhưng không có kết quả Stripe → failed")
 
                           # ── BƯỚC 4: Xử lý kết quả ──────────────────────────────────
+
+                          # ── OTP/3DS required: note card, F5, lấy thẻ kế ──────────────
+                          if _otp_required:
+                              _otp_card   = card_number
+                              _cards_tried += 1
+                              log(f"[{idx+1}] 🔐 OTP required — ghi note thẻ {_otp_card[:4]}**** & lấy thẻ kế")
+                              try:
+                                  save_declined_record(
+                                      email, _otp_card, "OTP/3DS required", cardholder_name,
+                                      password=password,
+                                      exp_month=exp_month, exp_year=exp_year,
+                                      cvv=cvv, address=address,
+                                      city=city, state=state, zip_code=zip_code
+                                  )
+                              except Exception as _oe:
+                                  log(f"[{idx+1}] ⚠ Lỗi ghi OTP record: {_oe}")
+                              # Xóa card này khỏi queue
+                              try:
+                                  _otp_cidx = _current_card_row.get("_idx")
+                                  if _otp_cidx is not None:
+                                      queue_done(_otp_cidx, "declined")
+                              except Exception:
+                                  pass
+                              if _cards_tried >= 5:
+                                  log(f"[{idx+1}] ⏹ Đã thử 5 thẻ — đóng phiên")
+                                  _keep_alive.set()
+                                  break
+                              _next_row = queue_pop()
+                              if not _next_row:
+                                  log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
+                                  _keep_alive.set()
+                                  break
+                              _next_email = _next_row.get("email", "")
+                              if _next_email:
+                                  log(f"[{idx+1}] 🗑 Bỏ mail '{_next_email}' (chỉ lấy card)")
+                              try:
+                                  _ni = _next_row.get("_idx")
+                                  if _ni is not None:
+                                      queue_done(_ni, "consumed")
+                              except Exception:
+                                  pass
+                              _current_card_row = _next_row
+                              _new_card_num = _next_row.get("card_number", "").strip().replace(" ", "")
+                              _new_exp_m    = _next_row.get("exp_month", "").strip().zfill(2)
+                              _new_exp_y    = _next_row.get("exp_year", "").strip()
+                              _new_exp_y2   = _new_exp_y[-2:] if len(_new_exp_y) >= 2 else _new_exp_y
+                              _new_mmyy     = f"{_new_exp_m}{_new_exp_y2}"
+                              _new_cvv      = _next_row.get("cvv", "").strip()
+                              _new_name     = _next_row.get("cardholder_name", "").strip() or cardholder_name
+                              log(f"[{idx+1}] ➡ OTP thẻ {_cards_tried+1}/5: {_new_card_num[:4]}**** — F5 reload Stripe")
+                              # F5 để thoát OTP popup, load lại trang checkout clean
+                              try: page.reload(wait_until="load", timeout=30000)
+                              except Exception: pass
+                              try: page.wait_for_load_state("networkidle", timeout=8000)
+                              except Exception: pass
+                              page.wait_for_timeout(3000)
+                              # Cập nhật biến card
+                              card_number     = _new_card_num
+                              exp_month       = _new_exp_m
+                              exp_year        = _new_exp_y
+                              exp_year_2      = _new_exp_y2
+                              exp_mmyy        = _new_mmyy
+                              cvv             = _new_cvv
+                              cardholder_name = _new_name
+                              # Reset flags
+                              _otp_required    = False
+                              _card_declined   = False
+                              _payment_failed  = False
+                              _captcha_blocked = False
+                              _pay_success     = False
+                              _skip_detect_fill = False  # fill lại từ đầu sau reload
+                              continue  # vòng _pay_retry: detect+fill thẻ mới
+
                           if _captcha_blocked:
                               if _ws_px_id:
                                   flag_proxy_captcha(_ws_px_id)
@@ -4527,8 +4793,34 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       log(f"[{idx+1}] ✗ {fname} clear+fill lỗi: {_cfe}")
                                       return False
 
-                              # Đợi trang ổn định (animation declined message xong)
-                              page.wait_for_timeout(1500)
+                              # Đợi field card re-enable sau declined (Stripe lock field 1-3s)
+                              import time as _twait
+                              _field_selectors = [
+                                  'input[name="cardnumber"]', 'input[autocomplete="cc-number"]',
+                                  'input[autocomplete*="cc-number"]', 'input[placeholder*="1234"]',
+                                  'input#cardNumber'
+                              ]
+                              _field_enabled = False
+                              _wait_t0 = _twait.time()
+                              while _twait.time() - _wait_t0 < 10:
+                                  for _fsel in _field_selectors:
+                                      try:
+                                          _fl = page.locator(_fsel).first
+                                          _fl.wait_for(state="visible", timeout=1500)
+                                          _is_disabled = page.evaluate(f'() => {{ const el = document.querySelector("{_fsel}"); return el ? el.disabled : true; }}')
+                                          if not _is_disabled:
+                                              _field_enabled = True
+                                              break
+                                      except Exception:
+                                          pass
+                                  if _field_enabled:
+                                      break
+                                  page.wait_for_timeout(700)
+                              if _field_enabled:
+                                  log(f"[{idx+1}] ✓ Card field đã re-enable ({_twait.time()-_wait_t0:.1f}s)")
+                              else:
+                                  log(f"[{idx+1}] ⚠ Card field vẫn disabled sau 10s — thử fill anyway")
+                              page.wait_for_timeout(300)
 
                               # ── Clear + fill Card Number ──
                               _cf_card_ok = False
