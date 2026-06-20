@@ -552,6 +552,8 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
     try:
         from invisible_playwright import InvisiblePlaywright
 
+        def log(msg): push_task_log(tid, msg)
+
         kwargs: dict = {}
         # Lấy proxy từ profile, nếu không có thì pick từ Webshare round-robin
         _proxy_src = profile.get("proxy_server")
@@ -3453,6 +3455,8 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
     try:
         from invisible_playwright import InvisiblePlaywright
+
+        def log(msg): push_task_log(tid, msg)
 
         kwargs: dict = {}
         # Lấy proxy từ profile, nếu không có thì pick từ Webshare round-robin
