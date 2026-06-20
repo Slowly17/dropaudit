@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "updated": "2026-06-20",
-  "notes": "Restart step 1: neu page con session cu co Start My Trial thi skip signup, click trial luon. Fix log restart /2 -> /3"
+  "notes": "Dashboard: hien thi bang the thanh cong (success_results.json), export CSV. Backend luu success record sau moi lan thanh toan thanh cong."
 }

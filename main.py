@@ -27,6 +27,37 @@ _IP_CACHE_TTL = 3600  # 1 giờ
 DATA_FILE     = Path("data.json")
 TASKS_FILE    = Path("tasks.json")
 DECLINED_FILE = Path("declined_results.json")
+SUCCESS_FILE  = Path("success_results.json")
+
+def load_success():
+    if SUCCESS_FILE.exists():
+        try:
+            return json.loads(SUCCESS_FILE.read_text())
+        except Exception:
+            pass
+    return {"records": []}
+
+def save_success_record(email: str, card: str, cardholder: str = "",
+                        password: str = "", exp_month: str = "", exp_year: str = "",
+                        cvv: str = "", address: str = "", city: str = "",
+                        state: str = "", zip_code: str = ""):
+    """Thêm 1 record thành công vào success_results.json."""
+    d = load_success()
+    d["records"].append({
+        "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
+        "email":      email,
+        "password":   password,
+        "card":       card,
+        "exp_month":  exp_month,
+        "exp_year":   exp_year,
+        "cvv":        cvv,
+        "cardholder": cardholder,
+        "address":    address,
+        "city":       city,
+        "state":      state,
+        "zip":        zip_code,
+    })
+    SUCCESS_FILE.write_text(json.dumps(d, indent=2))
 
 def load_declined():
     if DECLINED_FILE.exists():
@@ -1824,6 +1855,23 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                 queue_done(_row_idx, "success")
                         except Exception:
                             pass
+                        # Lưu vào success_results.json để hiển thị trên Dashboard
+                        try:
+                            save_success_record(
+                                email=email,
+                                card=result_row.get("card_number", ""),
+                                cardholder=result_row.get("cardholder_name", ""),
+                                password=password,
+                                exp_month=result_row.get("exp_month", ""),
+                                exp_year=result_row.get("exp_year", ""),
+                                cvv=result_row.get("cvv", ""),
+                                address=result_row.get("address", ""),
+                                city=result_row.get("city", ""),
+                                state=result_row.get("state", ""),
+                                zip_code=result_row.get("zip", ""),
+                            )
+                        except Exception:
+                            pass
                     elif result_row.get("captcha_blocked"):
                         result_row["status"] = "captcha_blocked"
                         log(f"[{idx+1}] 🚫 Kết quả: captcha_blocked")
@@ -3088,17 +3136,15 @@ def clear_declined():
 
 @app.get("/api/dashboard")
 def get_dashboard():
-    """Tổng hợp hiệu suất automation: tất cả tasks + declined."""
+    """Tổng hợp hiệu suất automation: tất cả tasks + declined + success."""
     tasks   = list(running_tasks.values())
     declined_data = load_declined()
     declined_records = declined_data.get("records", [])
+    success_data = load_success()
+    success_records = success_data.get("records", [])
 
     total_ran    = sum(t.get("done", 0) for t in tasks)
-    total_success= sum(
-        1 for t in tasks
-        for r in t.get("results", [])
-        if r.get("status") == "success"
-    )
+    total_success= len(success_records)
     total_declined = len(declined_records)
     total_failed = sum(
         1 for t in tasks
@@ -3122,6 +3168,7 @@ def get_dashboard():
             "running":        running_count,
         },
         "declined_records": declined_records[-200:],  # 200 gần nhất
+        "success_records":  success_records[-200:],   # 200 gần nhất
         "tasks": [
             {
                 "id":      t.get("id"),
@@ -4996,6 +5043,23 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                 queue_done(_row_idx, "success")
                         except Exception:
                             pass
+                        # Lưu vào success_results.json để hiển thị trên Dashboard
+                        try:
+                            save_success_record(
+                                email=email,
+                                card=result_row.get("card_number", ""),
+                                cardholder=result_row.get("cardholder_name", ""),
+                                password=password,
+                                exp_month=result_row.get("exp_month", ""),
+                                exp_year=result_row.get("exp_year", ""),
+                                cvv=result_row.get("cvv", ""),
+                                address=result_row.get("address", ""),
+                                city=result_row.get("city", ""),
+                                state=result_row.get("state", ""),
+                                zip_code=result_row.get("zip", ""),
+                            )
+                        except Exception:
+                            pass
                     elif result_row.get("captcha_blocked"):
                         result_row["status"] = "captcha_blocked"
                         log(f"[{idx+1}] 🚫 Kết quả: captcha_blocked")
@@ -6128,17 +6192,15 @@ def clear_declined():
 
 @app.get("/api/dashboard")
 def get_dashboard():
-    """Tổng hợp hiệu suất automation: tất cả tasks + declined."""
+    """Tổng hợp hiệu suất automation: tất cả tasks + declined + success."""
     tasks   = list(running_tasks.values())
     declined_data = load_declined()
     declined_records = declined_data.get("records", [])
+    success_data = load_success()
+    success_records = success_data.get("records", [])
 
     total_ran    = sum(t.get("done", 0) for t in tasks)
-    total_success= sum(
-        1 for t in tasks
-        for r in t.get("results", [])
-        if r.get("status") == "success"
-    )
+    total_success= len(success_records)
     total_declined = len(declined_records)
     total_failed = sum(
         1 for t in tasks
@@ -6162,6 +6224,7 @@ def get_dashboard():
             "running":        running_count,
         },
         "declined_records": declined_records[-200:],  # 200 gần nhất
+        "success_records":  success_records[-200:],   # 200 gần nhất
         "tasks": [
             {
                 "id":      t.get("id"),
