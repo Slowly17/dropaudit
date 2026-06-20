@@ -1814,6 +1814,11 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                         # end for _pay_retry
 
+                        # ── Lỗi unhandled: hết retry mà không có kết quả rõ ràng → restart ──
+                        if not _pay_success and not _captcha_blocked and not _need_restart:
+                            log(f"[{idx+1}] ⚠ Hết 5 lần retry không kết quả (fill fail / lỗi lạ) → restart step 1")
+                            _need_restart = True
+
                         # ── Xử lý sau khi thoát _pay_retry loop ──
                         if _pay_success:
                             # Thành công → thoát restart loop ngay
@@ -1829,12 +1834,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                             _current_signup_row = _next_restart_row
                             _n_email = _next_restart_row.get("email", "")
                             _n_card  = _next_restart_row.get("card_number", "")[:4]
-                            log(f"[{idx+1}] 🔄 Restart step 1 (lần {_restart_count+1}/2) — row mới: {_n_email} | {_n_card}****")
+                            log(f"[{idx+1}] 🔄 Restart step 1 (lần {_restart_count+1}/3) — row mới: {_n_email} | {_n_card}****")
                             # continue for _restart_count (tự động sang lần kế)
                             if _restart_count == 2:
                                 # Lần restart cuối cùng vẫn fail → đóng phiên
                                 log(f"[{idx+1}] ⏹ Đã restart 3 lần — đóng phiên")
                                 _keep_alive.set()
+                                break  # break for _restart_count
                         else:
                             # Không cần restart (captcha_blocked, card_declined hết thẻ, hoặc hết _pay_retry)
                             # queue_done đã được xử lý trong các path tương ứng
