@@ -1,5 +1,5 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "updated": "2026-06-20",
   "notes": "5 the max; proxy used_count; queue row delete; bao ve declined+queue.json khi update; queue persist qua restart"
 }

@@ -87,9 +87,10 @@ def save_tasks(t):
 PROXY_FILE = Path("proxies.json")
 
 def load_proxies() -> dict:
-    if PROXY_FILE.exists():
-        return json.loads(PROXY_FILE.read_text())
-    return {"proxies": []}
+    with _proxy_file_lock:
+        if PROXY_FILE.exists():
+            return json.loads(PROXY_FILE.read_text())
+        return {"proxies": []}
 
 _proxy_file_lock = threading.Lock()
 
@@ -120,38 +121,39 @@ def increment_proxy_used_by_server(proxy_server: str):
     if not m:
         return
     host, port = m.group(1), int(m.group(2))
-    pool = load_proxies()
-    matched = False
-    for p in pool.get("proxies", []):
-        if p.get("host") == host and int(p.get("port", 0)) == port:
-            p["used_count"] = p.get("used_count", 0) + 1
-            matched = True
-            break
-    if matched:
-        save_proxies(pool)
+    with _proxy_file_lock:
+        d = json.loads(PROXY_FILE.read_text()) if PROXY_FILE.exists() else {"proxies": []}
+        matched = False
+        for p in d.get("proxies", []):
+            if p.get("host") == host and int(p.get("port", 0)) == port:
+                p["used_count"] = p.get("used_count", 0) + 1
+                matched = True
+                break
+        if matched:
+            PROXY_FILE.write_text(json.dumps(d, indent=2))
 
 # round-robin index cho automation
 _proxy_rr_index = 0
 _proxy_rr_lock  = threading.Lock()
 
 def pick_next_proxy():
-    """Lấy proxy tiếp theo theo round-robin từ pool nội bộ."""
+    """Lấy proxy tiếp theo theo round-robin từ pool nội bộ. Thread-safe."""
     global _proxy_rr_index
-    pool = load_proxies()
-    proxies = [p for p in pool.get("proxies", []) if p.get("alive", True)]
-    if not proxies:
-        return None
     with _proxy_rr_lock:
-        idx = _proxy_rr_index % len(proxies)
-        _proxy_rr_index = idx + 1
-    px = proxies[idx]
-    # tăng used_count
-    pool2 = load_proxies()
-    for p in pool2["proxies"]:
-        if p["id"] == px["id"]:
-            p["used_count"] = p.get("used_count", 0) + 1
-            break
-    save_proxies(pool2)
+        with _proxy_file_lock:
+            d = json.loads(PROXY_FILE.read_text()) if PROXY_FILE.exists() else {"proxies": []}
+            proxies = [p for p in d.get("proxies", []) if p.get("alive", True)]
+            if not proxies:
+                return None
+            idx = _proxy_rr_index % len(proxies)
+            _proxy_rr_index = idx + 1
+            px = proxies[idx]
+            # tăng used_count trong cùng 1 lock
+            for p in d["proxies"]:
+                if p["id"] == px["id"]:
+                    p["used_count"] = p.get("used_count", 0) + 1
+                    break
+            PROXY_FILE.write_text(json.dumps(d, indent=2))
     # trả về format tương thích với script runner
     return {
         "server":   f"socks5://{px['host']}:{px['port']}",
@@ -3039,23 +3041,23 @@ _proxy_rr_index = 0
 _proxy_rr_lock  = threading.Lock()
 
 def pick_next_proxy():
-    """Lấy proxy tiếp theo theo round-robin từ pool nội bộ."""
+    """Lấy proxy tiếp theo theo round-robin từ pool nội bộ. Thread-safe."""
     global _proxy_rr_index
-    pool = load_proxies()
-    proxies = [p for p in pool.get("proxies", []) if p.get("alive", True)]
-    if not proxies:
-        return None
     with _proxy_rr_lock:
-        idx = _proxy_rr_index % len(proxies)
-        _proxy_rr_index = idx + 1
-    px = proxies[idx]
-    # tăng used_count
-    pool2 = load_proxies()
-    for p in pool2["proxies"]:
-        if p["id"] == px["id"]:
-            p["used_count"] = p.get("used_count", 0) + 1
-            break
-    save_proxies(pool2)
+        with _proxy_file_lock:
+            d = json.loads(PROXY_FILE.read_text()) if PROXY_FILE.exists() else {"proxies": []}
+            proxies = [p for p in d.get("proxies", []) if p.get("alive", True)]
+            if not proxies:
+                return None
+            idx = _proxy_rr_index % len(proxies)
+            _proxy_rr_index = idx + 1
+            px = proxies[idx]
+            # tăng used_count trong cùng 1 lock
+            for p in d["proxies"]:
+                if p["id"] == px["id"]:
+                    p["used_count"] = p.get("used_count", 0) + 1
+                    break
+            PROXY_FILE.write_text(json.dumps(d, indent=2))
     # trả về format tương thích với script runner
     return {
         "server":   f"socks5://{px['host']}:{px['port']}",
