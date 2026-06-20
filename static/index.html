@@ -958,18 +958,27 @@ async function loadQueue() {
   try {
     const r = await fetch('/api/queue');
     const d = await r.json();
-    const rows = d.rows || [];
-    const total = rows.length;
+    const allRows = d.rows || [];
+    const total = allRows.length;
+    // Badge hiện tổng tất cả hàng
     document.getElementById('queue-count-badge').textContent = total + ' hàng';
     document.getElementById('queue-count-badge').className = 'badge '+(total>0?'badge-queued':'badge-stopped');
-    // sync badge2
     const badge2 = document.getElementById('queue-count-badge2');
     if (badge2) badge2.textContent = total + ' hàng';
+
+    // Trong bảng: ẩn hàng đã xử lý xong (done/consumed/success) — chỉ giữ pending/running/declined/failed
+    const HIDDEN_STATUS = new Set(['done','consumed','success']);
+    const rows = allRows.filter(r => !HIDDEN_STATUS.has(r._status || 'pending'));
+
     // Render preview table
     const tableWrap = document.getElementById('queue-preview-table-wrap2');
     if (!tableWrap) return;
-    if (total === 0) { tableWrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82rem;">Chưa có dữ liệu</div>'; return; }
-    const statusColor = {pending:'var(--accent)',running:'#00c9ff',done:'#4dffa0',failed:'#ff4d4d',consumed:'var(--muted)'};
+    if (rows.length === 0) {
+      tableWrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:.82rem;">'
+        + (total > 0 ? `✅ Tất cả ${total} hàng đã xử lý xong` : 'Chưa có dữ liệu') + '</div>';
+      return;
+    }
+    const statusColor = {pending:'var(--accent)',running:'#00c9ff',done:'#4dffa0',failed:'#ff4d4d',consumed:'var(--muted)',declined:'#ff8c42'};
     let html = `<table style="width:100%;border-collapse:collapse;font-size:.78rem;">
       <thead><tr style="background:var(--bg);">
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">#</th>
@@ -981,6 +990,7 @@ async function loadQueue() {
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">CVV</th>
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Cardholder</th>
         <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Status</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;"></th>
       </tr></thead><tbody>`;
     rows.forEach((row, i) => {
       const st = row._status || 'pending';
@@ -989,6 +999,7 @@ async function loadQueue() {
       const pass = row.password || row.pass || '';
       const card = row.card_number || row.card || '';
       const bg = i%2===0 ? '' : 'background:rgba(255,255,255,.02);';
+      const ridx = row._idx !== undefined ? row._idx : '';
       html += `<tr style="${bg}">
         <td style="padding:5px 10px;color:var(--muted);">${i+1}</td>
         <td style="padding:5px 10px;">${esc(email)}</td>
@@ -999,11 +1010,23 @@ async function loadQueue() {
         <td style="padding:5px 10px;color:var(--muted);">${esc(row.cvv||'—')}</td>
         <td style="padding:5px 10px;">${esc(row.cardholder_name||row.cardholder||'—')}</td>
         <td style="padding:5px 10px;font-weight:700;color:${col};">${st}</td>
+        <td style="padding:5px 6px;">
+          <button onclick="removeQueueRow(${ridx})" title="Xoá hàng này" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='#ff4d4d'" onmouseout="this.style.color='var(--muted)'">✕</button>
+        </td>
       </tr>`;
     });
     html += '</tbody></table>';
     tableWrap.innerHTML = html;
   } catch(e){}
+}
+
+async function removeQueueRow(rowIdx) {
+  if (rowIdx === '' || rowIdx === undefined) return;
+  try {
+    const r = await fetch(`/api/queue/row/${rowIdx}`, {method:'DELETE'});
+    if (r.ok) { loadQueue(); }
+    else { showToast('Không xoá được hàng','err'); }
+  } catch(e) { showToast('Lỗi xoá hàng','err'); }
 }
 
 async function clearDoneQueue() {

@@ -1,5 +1,5 @@
 {
-  "version": "1.1.8",
+  "version": "1.1.9",
   "updated": "2026-06-20",
-  "notes": "Fix card 2/3: khong reload Stripe sau declined, thay bang clear+fill truc tiep (Ctrl+A+Backspace+press_sequentially). Dung _skip_detect_fill flag de bypass detect+fill, di thang toi click Pay."
+  "notes": "5 the max; proxy used_count single profile; queue row delete (nut X); bao ve declined_results.json khi update"
 }
