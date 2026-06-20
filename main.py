@@ -2411,14 +2411,19 @@ def queue_pop() -> dict | None:
     return None
 
 def queue_done(idx: int, status: str):
+    global _data_queue
     with _queue_lock:
-        for row in _data_queue:
-            if row["_idx"] == idx:
-                row["_status"] = status
-                if status in ("done", "success", "consumed", "declined", "failed"):
-                    row["email"] = ""
-                    row["password"] = ""
-                break
+        if status == "declined":
+            # Xoá hẳn khỏi queue — hàng declined data không dùng lại được
+            _data_queue = [r for r in _data_queue if r.get("_idx") != idx]
+        else:
+            for row in _data_queue:
+                if row["_idx"] == idx:
+                    row["_status"] = status
+                    if status in ("done", "success", "consumed", "failed"):
+                        row["email"] = ""
+                        row["password"] = ""
+                    break
         _queue_save_unlocked()
 
 def queue_get_all():
