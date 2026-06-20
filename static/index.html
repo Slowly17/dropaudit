@@ -342,6 +342,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
     <div class="spacer"></div>
     <button class="btn btn-ghost btn-sm" onclick="openModal('modal-import-proxy')">➕ Import</button>
     <button class="btn btn-primary btn-sm" onclick="checkAllProxies()">⚡ Check All</button>
+    <button class="btn btn-warn btn-sm" onclick="deleteDeadProxies()">🔴 Xóa Dead</button>
     <button class="btn btn-warn btn-sm" onclick="clearAllProxies()">🗑 Clear All</button>
     <button class="btn btn-ghost btn-sm" onclick="loadProxies()">🔄</button>
   </div>
@@ -1378,6 +1379,15 @@ async function deleteProxy(id) {
   const r = await fetch(`/api/proxies/${id}`, {method:'DELETE'});
   if(r.ok) { showToast('Đã xóa proxy','ok'); loadProxies(); }
   else showToast('Lỗi xóa proxy','err');
+}
+
+async function deleteDeadProxies() {
+  const r = await fetch('/api/proxies/dead', {method:'DELETE'});
+  const d = await r.json().catch(()=>({}));
+  if(r.ok) {
+    if(d.removed === 0) showToast('Không có proxy dead nào','ok');
+    else { showToast(`Đã xóa ${d.removed} proxy dead — còn ${d.remaining}`,'ok'); loadProxies(); }
+  } else showToast('Lỗi xóa dead','err');
 }
 
 async function clearAllProxies() {

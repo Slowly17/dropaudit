@@ -1,5 +1,5 @@
 {
-  "version": "1.3.1",
+  "version": "1.3.2",
   "updated": "2026-06-20",
-  "notes": "fix OTP/3DS detect va xu ly: F5+lay the ke; fix _get_page_text loc bo hcaptcha frames; fix doi card field re-enable truoc khi clear+fill"
+  "notes": "smart poll sau Pay: poll ngay 30s, click captcha inline trong vong poll, khong wait cung truoc; payment_failed 3 lan F5 -> skip sang the ke thay vi dong phien; them nut Xoa Dead proxy"
 }
