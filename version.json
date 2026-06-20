@@ -1,5 +1,5 @@
 {
-  "version": "1.3.7",
+  "version": "1.3.8",
   "updated": "2026-06-20",
-  "notes": "fix nut xoa dead proxy: doi thu tu route DELETE /api/proxies/dead len truoc /{proxy_id} de FastAPI khong match 'dead' nhu proxy_id"
+  "notes": "fix bug indent nghiem trong: STEP 2 (Stripe checkout) va restart logic nam NGOAI for _restart_count loop — gio da indent dung vao trong loop, signup chi chay 1 lan roi moi vao checkout"
 }
