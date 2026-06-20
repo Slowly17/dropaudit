@@ -9,6 +9,7 @@ import csv
 import io
 import random
 import string
+import urllib.request
 from pathlib import Path
 from typing import Optional
 from collections import deque
@@ -17,6 +18,10 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
+
+# ── Cache cho GitHub version check (tránh spam API) ──────────────────────────
+_ip_version_cache = {"data": None, "ts": 0}
+_IP_CACHE_TTL = 3600  # 1 giờ
 
 # ─── Storage ───────────────────────────────────────────────────────────────────
 DATA_FILE     = Path("data.json")
@@ -2999,6 +3004,60 @@ def api_version():
             return _json.load(f)
     except Exception:
         return {"version": "unknown"}
+
+@app.get("/api/invisible-playwright/version-check")
+def ip_version_check():
+    global _ip_version_cache
+    now = time.time()
+    if _ip_version_cache["data"] and (now - _ip_version_cache["ts"]) < _IP_CACHE_TTL:
+        return _ip_version_cache["data"]
+    try:
+        # Lấy version đang cài qua pip show
+        pip_out = subprocess.run(
+            [sys.executable, "-m", "pip", "show", "invisible_playwright"],
+            capture_output=True, text=True, timeout=10
+        ).stdout
+        current = ""
+        for line in pip_out.splitlines():
+            if line.lower().startswith("version:"):
+                current = line.split(":", 1)[1].strip()
+                break
+
+        # Lấy latest release từ GitHub
+        req = urllib.request.Request(
+            "https://api.github.com/repos/feder-cr/invisible_playwright/releases/latest",
+            headers={"User-Agent": "DropAudit-checker/1.0", "Accept": "application/vnd.github+json"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            gh = json.loads(resp.read())
+
+        tag = gh.get("tag_name", "")
+        latest_name = gh.get("name", "")
+        published_at = gh.get("published_at", "")[:10]  # chỉ lấy ngày
+        release_url = gh.get("html_url", "https://github.com/feder-cr/invisible_playwright/releases")
+
+        # So sánh đơn giản: nếu tag/name chứa version khác current thì có update
+        # Extract version number from release name (e.g. "invisible_firefox (150.0.1) rev 12")
+        import re
+        m = re.search(r'\(([^)]+)\)', latest_name)
+        latest_ver = m.group(1) if m else tag
+
+        has_update = bool(current) and (current != latest_ver)
+
+        result = {
+            "current": current or "unknown",
+            "latest": latest_ver,
+            "tag": tag,
+            "name": latest_name,
+            "has_update": has_update,
+            "release_url": release_url,
+            "published_at": published_at,
+            "cached_at": int(now)
+        }
+        _ip_version_cache = {"data": result, "ts": now}
+        return result
+    except Exception as e:
+        return {"error": str(e), "current": "", "latest": "", "has_update": False}
 
 @app.get("/")
 def root():

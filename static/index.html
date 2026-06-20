@@ -135,6 +135,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 <header>
   <h1>v5</h1>
   <span id="hdr-version">v—</span>
+  <a id="ip-update-badge" href="#" target="_blank" style="display:none;font-size:.74rem;font-weight:700;background:#f59e0b;color:#1a1a1a;padding:3px 10px;border-radius:20px;text-decoration:none;cursor:pointer;" title="">🔔 invisible_playwright mới</a>
   <div class="hright">
     <span id="hdr-proxy-count" style="font-size:.78rem;color:var(--muted)"></span>
     <span id="hdr-profile-count" style="font-size:.78rem;color:var(--muted)"></span>
@@ -545,6 +546,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('hdr-version');
     if(el && d.version) el.textContent = 'v' + d.version;
   }).catch(()=>{});
+  // Check invisible_playwright update (chạy nền, không block)
+  checkIPUpdate();
 });
 
 // ===================== TABS =====================
@@ -1839,6 +1842,26 @@ async function clearDeclined() {
   await fetch('/api/declined', {method:'DELETE'});
   loadDashboard();
 }
+
+// ── Check invisible_playwright update ────────────────────────────────────────
+async function checkIPUpdate() {
+  try {
+    const r = await fetch('/api/invisible-playwright/version-check');
+    const d = await r.json();
+    const badge = document.getElementById('ip-update-badge');
+    if(!badge) return;
+    if(d.has_update) {
+      badge.style.display = 'inline-block';
+      badge.href = d.release_url || 'https://github.com/feder-cr/invisible_playwright/releases';
+      badge.title = `Bản hiện tại: ${d.current} → Mới nhất: ${d.latest} (${d.tag}, ${d.published_at})\nClick để xem release notes`;
+      badge.textContent = `🔔 invisible_playwright ${d.latest} mới`;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { /* silent fail */ }
+}
+// Re-check mỗi 30 phút
+setInterval(checkIPUpdate, 30 * 60 * 1000);
 
 // Auto-refresh dashboard mỗi 5s khi đang ở tab dashboard
 setInterval(() => {
