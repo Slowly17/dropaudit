@@ -1,5 +1,5 @@
 {
-  "version": "1.3.6",
+  "version": "1.3.7",
   "updated": "2026-06-20",
-  "notes": "fix restart logic: (1) lo unhandled sau 5 lan fill fail gio set _need_restart thay vi dong phien; (2) fix break khi _restart_count==2; (3) fix log 'lan X/3'"
+  "notes": "fix nut xoa dead proxy: doi thu tu route DELETE /api/proxies/dead len truoc /{proxy_id} de FastAPI khong match 'dead' nhu proxy_id"
 }

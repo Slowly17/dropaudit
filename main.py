@@ -2856,6 +2856,16 @@ def api_import_proxies(body: ProxyImportBody):
     save_proxies(pool)
     return {"added": added, "total": len(pool["proxies"])}
 
+@app.delete("/api/proxies/dead")
+def api_delete_dead_proxies():
+    """Xóa tất cả proxy có alive=False (đã check và dead)."""
+    pool = load_proxies()
+    before = len(pool["proxies"])
+    pool["proxies"] = [p for p in pool["proxies"] if p.get("alive") is not False]
+    removed = before - len(pool["proxies"])
+    save_proxies(pool)
+    return {"ok": True, "removed": removed, "remaining": len(pool["proxies"])}
+
 @app.delete("/api/proxies/{proxy_id}")
 def api_delete_proxy(proxy_id: str):
     pool = load_proxies()
@@ -2870,16 +2880,6 @@ def api_delete_proxy(proxy_id: str):
 def api_clear_proxies():
     save_proxies({"proxies": []})
     return {"ok": True}
-
-@app.delete("/api/proxies/dead")
-def api_delete_dead_proxies():
-    """Xóa tất cả proxy có alive=False (đã check và dead)."""
-    pool = load_proxies()
-    before = len(pool["proxies"])
-    pool["proxies"] = [p for p in pool["proxies"] if p.get("alive") is not False]
-    removed = before - len(pool["proxies"])
-    save_proxies(pool)
-    return {"ok": True, "removed": removed, "remaining": len(pool["proxies"])}
 
 @app.post("/api/proxies/{proxy_id}/check")
 def api_check_proxy(proxy_id: str):
