@@ -1,5 +1,5 @@
 {
-  "version": "1.1.9",
+  "version": "1.2.0",
   "updated": "2026-06-20",
-  "notes": "5 the max; proxy used_count single profile; queue row delete (nut X); bao ve declined_results.json khi update"
+  "notes": "5 the max; proxy used_count; queue row delete; bao ve declined+queue.json khi update; queue persist qua restart"
 }

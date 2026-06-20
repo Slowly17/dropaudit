@@ -2353,11 +2353,47 @@ SCRIPT_RUNNERS = {
 # ══════════════════════════════════════════════════════════════════════════════
 _queue_lock = threading.Lock()
 _data_queue: list[dict] = []   # [{...row, _idx, _status: pending/running/done/failed}]
+_QUEUE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queue.json")
+
+# Statuses cần lưu lại (bỏ qua running → reset về pending khi load lại)
+_QUEUE_SAVE_STATUSES = ("pending", "failed", "declined", "running")
+
+def _queue_save_unlocked():
+    """Ghi queue ra file. Gọi khi đang giữ _queue_lock."""
+    try:
+        rows_to_save = []
+        for r in _data_queue:
+            if r.get("_status", "pending") in _QUEUE_SAVE_STATUSES:
+                row = dict(r)
+                # running → reset về pending khi lưu (tránh mắc kẹt sau restart)
+                if row["_status"] == "running":
+                    row["_status"] = "pending"
+                rows_to_save.append(row)
+        with open(_QUEUE_FILE, "w", encoding="utf-8") as f:
+            json.dump(rows_to_save, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[queue] save error: {e}")
+
+def queue_load():
+    """Đọc queue từ file khi khởi động."""
+    global _data_queue
+    if not os.path.exists(_QUEUE_FILE):
+        return
+    try:
+        with open(_QUEUE_FILE, "r", encoding="utf-8") as f:
+            rows = json.load(f)
+        if isinstance(rows, list) and rows:
+            with _queue_lock:
+                _data_queue = rows
+            print(f"[queue] Loaded {len(rows)} rows from queue.json")
+    except Exception as e:
+        print(f"[queue] load error: {e}")
 
 def queue_set(rows: list[dict]):
     global _data_queue
     with _queue_lock:
         _data_queue = [{"_idx": i, "_status": "pending", **r} for i, r in enumerate(rows)]
+        _queue_save_unlocked()
 
 def queue_pop() -> dict | None:
     """Lấy 1 hàng pending, đánh dấu running. Thread-safe."""
@@ -2365,6 +2401,7 @@ def queue_pop() -> dict | None:
         for row in _data_queue:
             if row["_status"] == "pending":
                 row["_status"] = "running"
+                _queue_save_unlocked()
                 return dict(row)
     return None
 
@@ -2377,6 +2414,7 @@ def queue_done(idx: int, status: str):
                     row["email"] = ""
                     row["password"] = ""
                 break
+        _queue_save_unlocked()
 
 def queue_get_all():
     with _queue_lock:
@@ -2396,6 +2434,7 @@ def push_queue(body: QueuePushBody):
         start = len(_data_queue)
         for i, r in enumerate(body.rows):
             _data_queue.append({"_idx": start + i, "_status": "pending", **r})
+        _queue_save_unlocked()
     return {"added": len(body.rows), "total": len(_data_queue)}
 
 @app.delete("/api/queue")
@@ -2403,6 +2442,7 @@ def clear_queue():
     global _data_queue
     with _queue_lock:
         _data_queue = []
+        _queue_save_unlocked()
     return {"cleared": True}
 
 @app.post("/api/queue/clean")
@@ -2412,6 +2452,7 @@ def clean_queue():
         before = len(_data_queue)
         _data_queue = [r for r in _data_queue if r.get("_status","pending") not in ("done","failed","consumed")]
         removed = before - len(_data_queue)
+        _queue_save_unlocked()
     return {"removed": removed, "remaining": len(_data_queue)}
 
 @app.delete("/api/queue/row/{row_idx}")
@@ -2421,6 +2462,7 @@ def delete_queue_row(row_idx: int):
         before = len(_data_queue)
         _data_queue = [r for r in _data_queue if r.get("_idx") != row_idx]
         removed = before - len(_data_queue)
+        _queue_save_unlocked()
     return {"removed": removed}
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2954,6 +2996,9 @@ if __name__ == "__main__":
     import os
 
     PORT = 8099
+
+    # ── Load queue từ file (persist qua restart/update) ─────────────
+    queue_load()
 
     # ── Chống mở 2 tab ──────────────────────────────────────────────
     # Lỗi cũ: StartApp.bat/.sh mở tab + main.py mở tab → 2 tab.
@@ -5206,81 +5251,6 @@ SCRIPT_RUNNERS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# QUEUE — data rows chờ chạy
-# ══════════════════════════════════════════════════════════════════════════════
-_queue_lock = threading.Lock()
-_data_queue: list[dict] = []   # [{...row, _idx, _status: pending/running/done/failed}]
-
-def queue_set(rows: list[dict]):
-    global _data_queue
-    with _queue_lock:
-        _data_queue = [{"_idx": i, "_status": "pending", **r} for i, r in enumerate(rows)]
-
-def queue_pop() -> dict | None:
-    """Lấy 1 hàng pending, đánh dấu running. Thread-safe."""
-    with _queue_lock:
-        for row in _data_queue:
-            if row["_status"] == "pending":
-                row["_status"] = "running"
-                return dict(row)
-    return None
-
-def queue_done(idx: int, status: str):
-    with _queue_lock:
-        for row in _data_queue:
-            if row["_idx"] == idx:
-                row["_status"] = status
-                if status in ("done", "success", "consumed", "declined", "failed"):
-                    row["email"] = ""
-                    row["password"] = ""
-                break
-
-def queue_get_all():
-    with _queue_lock:
-        return list(_data_queue)
-
-class QueuePushBody(BaseModel):
-    rows: list[dict]
-
-@app.get("/api/queue")
-def get_queue():
-    rows = queue_get_all()
-    return {"rows": rows, "count": len(rows)}
-
-@app.post("/api/queue")
-def push_queue(body: QueuePushBody):
-    with _queue_lock:
-        start = len(_data_queue)
-        for i, r in enumerate(body.rows):
-            _data_queue.append({"_idx": start + i, "_status": "pending", **r})
-    return {"added": len(body.rows), "total": len(_data_queue)}
-
-@app.delete("/api/queue")
-def clear_queue():
-    global _data_queue
-    with _queue_lock:
-        _data_queue = []
-    return {"cleared": True}
-
-@app.post("/api/queue/clean")
-def clean_queue():
-    global _data_queue
-    with _queue_lock:
-        before = len(_data_queue)
-        _data_queue = [r for r in _data_queue if r.get("_status","pending") not in ("done","failed","consumed")]
-        removed = before - len(_data_queue)
-    return {"removed": removed, "remaining": len(_data_queue)}
-
-@app.delete("/api/queue/row/{row_idx}")
-def delete_queue_row(row_idx: int):
-    global _data_queue
-    with _queue_lock:
-        before = len(_data_queue)
-        _data_queue = [r for r in _data_queue if r.get("_idx") != row_idx]
-        removed = before - len(_data_queue)
-    return {"removed": removed}
-
-# ══════════════════════════════════════════════════════════════════════════════
 # BULK PROFILE APIS
 # ══════════════════════════════════════════════════════════════════════════════
 RANDOM_NAMES_FIRST = ["Alex","Blake","Casey","Dana","Drew","Evan","Flynn","Gray","Harley","Indigo",
@@ -5811,6 +5781,9 @@ if __name__ == "__main__":
     import os
 
     PORT = 8099
+
+    # ── Load queue từ file (persist qua restart/update) ─────────────
+    queue_load()
 
     # ── Chống mở 2 tab ──────────────────────────────────────────────
     # Lỗi cũ: StartApp.bat/.sh mở tab + main.py mở tab → 2 tab.

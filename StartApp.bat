@@ -79,6 +79,7 @@ if exist "%TEMP%\dropaudit_extract\dropaudit-main" (
     if exist "data.json" copy /y "data.json" "%TEMP%\_bak_data.json" >nul 2>&1
     if exist "proxies.json" copy /y "proxies.json" "%TEMP%\_bak_proxies.json" >nul 2>&1
     if exist "declined_results.json" copy /y "declined_results.json" "%TEMP%\_bak_declined.json" >nul 2>&1
+    if exist "queue.json" copy /y "queue.json" "%TEMP%\_bak_queue.json" >nul 2>&1
 
     :: Copy code moi (main.py, static, requirements, version.json...)
     xcopy /y /e /q "%TEMP%\dropaudit_extract\dropaudit-main\*" "." >nul 2>&1
@@ -87,6 +88,7 @@ if exist "%TEMP%\dropaudit_extract\dropaudit-main" (
     if exist "%TEMP%\_bak_data.json" copy /y "%TEMP%\_bak_data.json" "data.json" >nul 2>&1
     if exist "%TEMP%\_bak_proxies.json" copy /y "%TEMP%\_bak_proxies.json" "proxies.json" >nul 2>&1
     if exist "%TEMP%\_bak_declined.json" copy /y "%TEMP%\_bak_declined.json" "declined_results.json" >nul 2>&1
+    if exist "%TEMP%\_bak_queue.json" copy /y "%TEMP%\_bak_queue.json" "queue.json" >nul 2>&1
 
     echo [OK] Da cap nhat len ban !REMOTE_VER!
 ) else (
