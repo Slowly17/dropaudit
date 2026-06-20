@@ -31,6 +31,8 @@ header span{font-size:.75rem;color:var(--muted);}
 .btn-primary{background:var(--accent);color:#fff;}
 .btn-success{background:var(--accent2);color:#0d0f14;}
 .btn-danger{background:var(--danger);color:#fff;}
+.btn-copy-log{background:transparent;color:var(--muted);border:1px solid var(--border);padding:2px 7px;font-size:.78rem;opacity:.7;}
+.btn-copy-log:hover{opacity:1;color:var(--accent);}
 .btn-warn{background:var(--warn);color:#0d0f14;}
 .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);}
 .btn-sm{padding:5px 12px;font-size:.78rem;}
@@ -1143,6 +1145,7 @@ function renderLogs(tasks) {
         ${rowInfo?`<span class="row-info">· ${esc(rowInfo)}</span>`:''}
         <div class="spacer"></div>
         <span class="badge badge-${t.status}">${t.status}</span>
+        <button class="btn btn-sm btn-copy-log" onclick="copyLog('${t.id}')" title="Copy log">📋</button>
         ${['running','starting','queued'].includes(t.status)
           ? `<button class="btn btn-danger btn-sm" onclick="stopTask('${t.id}')">Stop</button>`
           : ''}
@@ -1172,6 +1175,24 @@ async function stopTask(taskId) {
   const r = await fetch('/api/tasks/'+taskId+'/stop', {method:'POST'});
   if(r.ok) showToast('Đã gửi lệnh stop','ok');
   else showToast('Lỗi stop task','err');
+}
+
+function copyLog(taskId) {
+  const el = document.getElementById('log-body-' + taskId);
+  if (!el) return;
+  const text = el.innerText || el.textContent || '';
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Đã copy log', 'ok');
+  }).catch(() => {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Đã copy log', 'ok');
+  });
 }
 
 // ===================== PROXY =====================

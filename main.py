@@ -176,6 +176,8 @@ def push_log(pid: str, msg: str):
 
 def push_task_log(tid: str, msg: str):
     if tid in running_tasks:
+        if running_tasks[tid].get("status") == "stopped":
+            return  # không log sau khi đã dừng
         running_tasks[tid]["logs"].append(f"{time.strftime('%H:%M:%S')} {msg}")
 
 # ─── Auto-install check ────────────────────────────────────────────────────────
@@ -3085,6 +3087,8 @@ def push_log(pid: str, msg: str):
 
 def push_task_log(tid: str, msg: str):
     if tid in running_tasks:
+        if running_tasks[tid].get("status") == "stopped":
+            return
         running_tasks[tid]["logs"].append(f"{time.strftime('%H:%M:%S')} {msg}")
 
 # ─── Auto-install check ────────────────────────────────────────────────────────
