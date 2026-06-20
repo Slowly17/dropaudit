@@ -1038,6 +1038,40 @@ async function clearDoneQueue() {
   } catch(e){ showToast('Lỗi dọn queue','err'); }
 }
 
+// ── Lọc thẻ hết hạn trước khi đẩy vào queue ──────────────────────────────
+// Trả về { valid: [...], expired: [...] }
+// expired = mảng các row đã quá tháng hiện tại
+function _filterExpiredCards(rows) {
+  const now = new Date();
+  const curYear  = now.getFullYear();
+  const curMonth = now.getMonth() + 1; // 1-12
+
+  const valid   = [];
+  const expired = [];
+
+  rows.forEach(row => {
+    const rawM = String(row.exp_month || row.month || row.mm || '').trim();
+    const rawY = String(row.exp_year  || row.year  || row.yy || row.yyyy || '').trim();
+
+    // Nếu không có ngày hết hạn → giữ lại (không đủ dữ liệu để kết luận)
+    if (!rawM || !rawY) { valid.push(row); return; }
+
+    const m = parseInt(rawM, 10);
+    // Hỗ trợ cả YY (2 chữ số) và YYYY (4 chữ số)
+    let y = parseInt(rawY, 10);
+    if (y < 100) y += 2000; // 27 → 2027
+
+    if (isNaN(m) || isNaN(y)) { valid.push(row); return; }
+
+    // Thẻ hết hạn vào cuối tháng exp — so sánh năm trước, rồi tháng
+    const isExpired = (y < curYear) || (y === curYear && m < curMonth);
+    if (isExpired) expired.push(row);
+    else valid.push(row);
+  });
+
+  return { valid, expired };
+}
+
 async function pushToQueue() {
   const raw = document.getElementById('queue-input').value.trim();
   if(!raw) { showToast('Nhập dữ liệu trước','err'); return; }
@@ -1048,6 +1082,21 @@ async function pushToQueue() {
   } catch(_) {
     rows = raw.split('\n').filter(l=>l.trim()).map(l=>({raw:l.trim()}));
   }
+
+  // Lọc expired
+  const { valid, expired } = _filterExpiredCards(rows);
+  if (expired.length > 0) {
+    const names = expired.map(r => {
+      const card = (r.card_number || r.card || r.cc || '').slice(-4);
+      const m = String(r.exp_month || r.month || r.mm || '?').padStart(2,'0');
+      const y = String(r.exp_year  || r.year  || r.yy || '?');
+      return card ? `*${card} (${m}/${y})` : `(${m}/${y})`;
+    }).join(', ');
+    showToast(`⚠ Đã xóa ${expired.length} thẻ hết hạn: ${names}`, 'err', 6000);
+    if (!valid.length) { showToast('Không còn thẻ hợp lệ để đẩy', 'err'); return; }
+    rows = valid;
+  }
+
   const r = await fetch('/api/queue', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -1327,12 +1376,12 @@ document.querySelectorAll('.overlay').forEach(o=>{
   o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('open'); });
 });
 
-function showToast(msg, type='') {
+function showToast(msg, type='', duration=3500) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show'+(type?' '+type:'');
   clearTimeout(t._timer);
-  t._timer = setTimeout(()=>t.classList.remove('show'), 3500);
+  t._timer = setTimeout(()=>t.classList.remove('show'), duration);
 }
 
 function esc(s) {
@@ -1476,6 +1525,20 @@ async function pushPreviewToQueue() {
 
   if (!rows.length) { showToast('Không có dữ liệu', 'err'); return; }
 
+  // ── Lọc thẻ hết hạn ──
+  const { valid: validRows, expired: expiredRows } = _filterExpiredCards(rows);
+  if (expiredRows.length > 0) {
+    const names = expiredRows.map(r => {
+      const card = (r.card_number || r.card || r.cc || '').slice(-4);
+      const m = String(r.exp_month || r.month || r.mm || '?').padStart(2,'0');
+      const y = String(r.exp_year  || r.year  || r.yy || '?');
+      return card ? `*${card} (${m}/${y})` : `(${m}/${y})`;
+    }).join(', ');
+    showToast(`⚠ Đã xóa ${expiredRows.length} thẻ hết hạn: ${names}`, 'err', 6000);
+    if (!validRows.length) { showToast('Không còn thẻ hợp lệ để đẩy', 'err'); return; }
+  }
+  const rowsToPush = validRows;
+
   const btn = document.getElementById('btn-push-preview');
   if (btn) { btn.disabled = true; btn.textContent = 'Đang đẩy...'; }
 
@@ -1483,11 +1546,12 @@ async function pushPreviewToQueue() {
     const r = await fetch('/api/queue', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({rows})
+      body: JSON.stringify({rows: rowsToPush})
     });
     if (r.ok) {
       const d = await r.json();
-      showToast(`✓ Đã đẩy ${d.added} hàng vào queue`, 'ok');
+      const expMsg = expiredRows.length ? ` (bỏ ${expiredRows.length} hết hạn)` : '';
+      showToast(`✓ Đã đẩy ${d.added} hàng vào queue${expMsg}`, 'ok');
       clearPreview();
       loadQueue();
     } else {

@@ -1,5 +1,5 @@
 {
-  "version": "1.2.6",
+  "version": "1.2.7",
   "updated": "2026-06-20",
-  "notes": "fix: dong profile sau 5 the (set thay wait); fix: skip detect+fill dung (_was_skip) tranh fill lai tu dau khi CCV da dung"
+  "notes": "loc the het han khi push vao queue: tu xoa + thong bao so the bi loai"
 }
