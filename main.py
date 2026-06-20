@@ -661,11 +661,19 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                         log(f"[{idx+1}] {'▶ Signup lần đầu' if _restart_count == 0 else f'🔄 Restart lần {_restart_count}/3'}: {email} | {card_number[:4] if card_number else '—'}****")
 
                         # ── STEP 1: Đăng ký ────────────────────────────────────────
-                        # Nếu restart: kiểm tra page hiện tại có "Start My Trial" chưa
-                        # (account vừa tạo vẫn còn session) → skip signup, dùng luôn
+                        # Luôn goto signup trước, sau đó mới check session cũ
+                        log(f"[{idx+1}] → dropaudit.com/signup")
+                        try:
+                            page.goto("https://dropaudit.com/signup", wait_until="domcontentloaded", timeout=90000)
+                        except Exception as _ge:
+                            log(f"[{idx+1}] ⚠ goto timeout/err: {_ge} — thử tiếp")
+
+                        # Sau khi goto: kiểm tra xem có "Start My Trial" sẵn không
+                        # (session cũ vẫn còn dính → không cần tạo acc mới)
                         _skip_signup = False
                         if _restart_count > 0:
                             try:
+                                page.wait_for_timeout(2000)  # đợi page render
                                 _trial_check = page.query_selector('button:has-text("Start My Trial")')
                                 if _trial_check:
                                     _skip_signup = True
@@ -674,12 +682,6 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                 pass
 
                         if not _skip_signup:
-                            log(f"[{idx+1}] → dropaudit.com/signup")
-                            # Proxy yếu: tăng timeout goto lên 90s, wait networkidle
-                            try:
-                                page.goto("https://dropaudit.com/signup", wait_until="domcontentloaded", timeout=90000)
-                            except Exception as _ge:
-                                log(f"[{idx+1}] ⚠ goto timeout/err: {_ge} — thử tiếp")
 
                             # Chờ field email xuất hiện tối đa 45s
                             log(f"[{idx+1}] ⏳ Chờ form đăng ký load (45s)...")
