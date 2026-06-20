@@ -733,6 +733,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # LUÔN reset stale locator đầu mỗi vòng — tránh dùng locator từ page cũ
                           _card_loc = None
                           _card_ctx = None
+                          _was_skip = _skip_detect_fill  # lưu trước khi reset
                           if _skip_detect_fill:
                               # Đã clear+fill trực tiếp ở vòng trước — bỏ qua detect+điền, đi thẳng tới Pay
                               _skip_detect_fill = False
@@ -752,7 +753,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] ⚠ Không còn thẻ để thử — dừng")
                                   break
                               log(f"[{idx+1}] ⏳ Đợi Stripe Checkout load thẻ {_pay_retry+1}/3 (tối đa 60s)...")
-                          if not _skip_detect_fill:
+                          if not _was_skip:
                             # Đợi redirect tới stripe hoặc trang có card input
                             stripe_loaded = False
                             for _w in range(60):
@@ -1480,13 +1481,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               # ── Kiểm tra đã đủ 3 thẻ chưa ──
                               if _cards_tried >= 5:
                                   log(f"[{idx+1}] ⏹ Đã thử 5 thẻ trong phiên — đóng phiên")
-                                  _keep_alive.wait()
+                                  _keep_alive.set()  # đóng browser ngay, không chờ
                                   break
                               # ── Lấy thẻ tiếp theo từ queue (chỉ lấy card, giữ mail/pass cũ) ──
                               _next_row = queue_pop()
                               if not _next_row:
                                   log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
-                                  _keep_alive.wait()
+                                  _keep_alive.set()  # đóng browser ngay, không chờ
                                   break
                               # Bỏ email/pass của row mới, chỉ lấy card
                               _next_email = _next_row.get("email", "")
@@ -3644,6 +3645,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                           # LUÔN reset stale locator đầu mỗi vòng — tránh dùng locator từ page cũ
                           _card_loc = None
                           _card_ctx = None
+                          _was_skip = _skip_detect_fill  # lưu trước khi reset
                           if _skip_detect_fill:
                               # Đã clear+fill trực tiếp ở vòng trước — bỏ qua detect+điền, đi thẳng tới Pay
                               _skip_detect_fill = False
@@ -3663,7 +3665,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   log(f"[{idx+1}] ⚠ Không còn thẻ để thử — dừng")
                                   break
                               log(f"[{idx+1}] ⏳ Đợi Stripe Checkout load thẻ {_pay_retry+1}/3 (tối đa 60s)...")
-                          if not _skip_detect_fill:
+                          if not _was_skip:
                             # Đợi redirect tới stripe hoặc trang có card input
                             stripe_loaded = False
                             for _w in range(60):
@@ -4391,13 +4393,13 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               # ── Kiểm tra đã đủ 3 thẻ chưa ──
                               if _cards_tried >= 5:
                                   log(f"[{idx+1}] ⏹ Đã thử 5 thẻ trong phiên — đóng phiên")
-                                  _keep_alive.wait()
+                                  _keep_alive.set()  # đóng browser ngay, không chờ
                                   break
                               # ── Lấy thẻ tiếp theo từ queue (chỉ lấy card, giữ mail/pass cũ) ──
                               _next_row = queue_pop()
                               if not _next_row:
                                   log(f"[{idx+1}] ⏹ Không còn thẻ trong queue — đóng phiên")
-                                  _keep_alive.wait()
+                                  _keep_alive.set()  # đóng browser ngay, không chờ
                                   break
                               # Bỏ email/pass của row mới, chỉ lấy card
                               _next_email = _next_row.get("email", "")

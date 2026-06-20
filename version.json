@@ -1,5 +1,5 @@
 {
-  "version": "1.2.5",
+  "version": "1.2.6",
   "updated": "2026-06-20",
-  "notes": "5 the max; proxy used_count; queue row delete; bao ve declined+queue.json khi update; queue persist qua restart"
+  "notes": "fix: dong profile sau 5 the (set thay wait); fix: skip detect+fill dung (_was_skip) tranh fill lai tu dau khi CCV da dung"
 }
