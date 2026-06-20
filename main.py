@@ -940,7 +940,15 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                     để clear (KHÔNG dùng triple_click vì Locator không có method đó →
                                     trước đây crash silent khiến mọi field báo điền hụt), rồi press_sequentially."""
                                     try:
-                                        loc.wait_for(state="visible", timeout=8000)
+                                        # Timeout ngắn: nếu page đang navigate thì bắt exception ngay
+                                        # thay vì chờ 8s mỗi selector → tránh stuck hàng trăm giây
+                                        try:
+                                            loc.wait_for(state="visible", timeout=2000)
+                                        except Exception as _wfe:
+                                            _wfe_s = str(_wfe)
+                                            if "navigation" in _wfe_s or "Target page" in _wfe_s or "Frame was detached" in _wfe_s:
+                                                return False  # page đang navigate → bỏ qua locator này
+                                            raise  # lỗi khác → để outer except xử lý
                                         # KHÔNG gọi scroll_into_view_if_needed — gây treo trên Stripe.
                                         loc.click()
                                         _t2.sleep(0.25)
@@ -988,7 +996,18 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                         log(f"[{idx+1}] ✗ {field_name} lỗi [{src}]: {_fe}")
                                         return False
   
+                                _fill_url = page.url  # track URL để detect navigation
                                 for _attempt in range(6):
+                                    # Nếu URL đổi giữa chừng → trang đang navigate, đợi load xong
+                                    _cur_url = page.url
+                                    if _cur_url != _fill_url:
+                                        log(f"[{idx+1}] 🔄 {field_name}: URL đổi ({_fill_url[:50]}→{_cur_url[:50]}) — đợi load...")
+                                        try: page.wait_for_load_state("domcontentloaded", timeout=15000)
+                                        except Exception: pass
+                                        try: page.wait_for_load_state("networkidle", timeout=10000)
+                                        except Exception: pass
+                                        page.wait_for_timeout(2000)
+                                        _fill_url = page.url
                                     # 1. Thử main page trước (checkout.stripe.com — toàn bộ trang là Stripe)
                                     for _sel in field_selectors:
                                         _loc = page.locator(_sel).first
@@ -4087,7 +4106,15 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                     để clear (KHÔNG dùng triple_click vì Locator không có method đó →
                                     trước đây crash silent khiến mọi field báo điền hụt), rồi press_sequentially."""
                                     try:
-                                        loc.wait_for(state="visible", timeout=8000)
+                                        # Timeout ngắn: nếu page đang navigate thì bắt exception ngay
+                                        # thay vì chờ 8s mỗi selector → tránh stuck hàng trăm giây
+                                        try:
+                                            loc.wait_for(state="visible", timeout=2000)
+                                        except Exception as _wfe:
+                                            _wfe_s = str(_wfe)
+                                            if "navigation" in _wfe_s or "Target page" in _wfe_s or "Frame was detached" in _wfe_s:
+                                                return False  # page đang navigate → bỏ qua locator này
+                                            raise  # lỗi khác → để outer except xử lý
                                         # KHÔNG gọi scroll_into_view_if_needed — gây treo trên Stripe.
                                         loc.click()
                                         _t2.sleep(0.25)
@@ -4135,7 +4162,18 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                         log(f"[{idx+1}] ✗ {field_name} lỗi [{src}]: {_fe}")
                                         return False
   
+                                _fill_url = page.url  # track URL để detect navigation
                                 for _attempt in range(6):
+                                    # Nếu URL đổi giữa chừng → trang đang navigate, đợi load xong
+                                    _cur_url = page.url
+                                    if _cur_url != _fill_url:
+                                        log(f"[{idx+1}] 🔄 {field_name}: URL đổi ({_fill_url[:50]}→{_cur_url[:50]}) — đợi load...")
+                                        try: page.wait_for_load_state("domcontentloaded", timeout=15000)
+                                        except Exception: pass
+                                        try: page.wait_for_load_state("networkidle", timeout=10000)
+                                        except Exception: pass
+                                        page.wait_for_timeout(2000)
+                                        _fill_url = page.url
                                     # 1. Thử main page trước (checkout.stripe.com — toàn bộ trang là Stripe)
                                     for _sel in field_selectors:
                                         _loc = page.locator(_sel).first
