@@ -1,5 +1,5 @@
 {
   "version": "1.4.2",
   "updated": "2026-06-22",
-  "notes": "AutoV2: JS frontend (loadAutoV2Page, runAutoV2, stopAllAutoV2, renderAutoV2Tasks), fix closure bug _done_event, formatLogLine dim class for noise lines."
+  "notes": "AutoV2 frontend JS hoàn chỉnh; fix dismiss Stripe Link: thêm Not now/No thanks/Use a different card selectors, search tất cả frames, click-outside fallback, không chặn flow nếu lỗi."
 }
