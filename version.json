@@ -1,5 +1,5 @@
 {
-  "version": "1.4.2",
+  "version": "1.4.3",
   "updated": "2026-06-22",
-  "notes": "AutoV2 frontend JS hoàn chỉnh; fix dismiss Stripe Link: thêm Not now/No thanks/Use a different card selectors, search tất cả frames, click-outside fallback, không chặn flow nếu lỗi."
+  "notes": "Xoa toan bo block dismiss Continue with Link — overlay khong can dong, o card van render binh thuong ben duoi."
 }
