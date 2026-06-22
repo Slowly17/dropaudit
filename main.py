@@ -1513,6 +1513,41 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                           break
                                   except Exception: pass
 
+                                  # -- 0b. Bank OTP popup overlay (không phải iframe — render trong Stripe page) --
+                                  try:
+                                      _bp_txt = page.evaluate("""
+                                          () => {
+                                              const t = document.body ? document.body.innerText : '';
+                                              return t.includes('Keep your account safe')
+                                                  || t.includes('one time code')
+                                                  || t.includes('verification code');
+                                          }
+                                      """)
+                                      if _bp_txt and not _otp_required:
+                                          log(f"[{idx+1}] 🏦 Bank OTP overlay trong Stripe — click Continue dismiss ({_elapsed:.1f}s)")
+                                          _dismissed = False
+                                          for _bs in [
+                                              "button.ButtonElement:has-text('CONTINUE')",
+                                              "button:has-text('CONTINUE')",
+                                              "button[type='submit']:has-text('CONTINUE')",
+                                              "button:has-text('Continue'):not(:has-text('Link'))",
+                                          ]:
+                                              try:
+                                                  _bl = page.locator(_bs).first
+                                                  _bl.wait_for(state="visible", timeout=1500)
+                                                  _bl.click()
+                                                  _dismissed = True
+                                                  log(f"[{idx+1}] ✓ Dismissed bank popup — tiếp tục poll")
+                                                  page.wait_for_timeout(1500)
+                                                  break
+                                              except Exception:
+                                                  pass
+                                          if not _dismissed:
+                                              log(f"[{idx+1}] ⚠ Bank popup nhưng không dismiss được — mark OTP required")
+                                              _otp_required = True
+                                              break
+                                  except Exception: pass
+
                                   # -- 1. Declined text --
                                   _txt = _get_page_text()
                                   if any(kw in _txt for kw in _DECLINE_KEYWORDS):
@@ -1693,6 +1728,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                           return False
 
                                   # Đợi field card re-enable sau declined (Stripe lock field 1-3s)
+                                  # + detect & dismiss bank OTP popup (VISA/Regions/etc overlay trong Stripe)
                                   import time as _twait
                                   _field_selectors = [
                                       'input[name="cardnumber"]', 'input[autocomplete="cc-number"]',
@@ -1700,8 +1736,49 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       'input#cardNumber'
                                   ]
                                   _field_enabled = False
+                                  _bank_popup_dismissed = False
                                   _wait_t0 = _twait.time()
-                                  while _twait.time() - _wait_t0 < 10:
+                                  while _twait.time() - _wait_t0 < 30:
+                                      # -- Detect bank OTP/auth popup (overlay trong Stripe page) --
+                                      if not _bank_popup_dismissed:
+                                          try:
+                                              _bank_popup = page.evaluate("""
+                                                  () => {
+                                                      const _txt = document.body ? document.body.innerText : '';
+                                                      const hasPopup = _txt.includes('Keep your account safe')
+                                                          || _txt.includes('authenticate')
+                                                          || _txt.includes('one time code')
+                                                          || _txt.includes('verification code');
+                                                      return hasPopup;
+                                                  }
+                                              """)
+                                              if _bank_popup:
+                                                  log(f"[{idx+1}] 🏦 Bank OTP popup detected — click Continue để dismiss")
+                                                  # Thử click nút Continue (không phải "Continue with Link")
+                                                  _cont_clicked = False
+                                                  for _cont_sel in [
+                                                      "button.ButtonElement:has-text('CONTINUE')",
+                                                      "button:has-text('CONTINUE')",
+                                                      "button[type='submit']:has-text('CONTINUE')",
+                                                      "button:has-text('Continue'):not(:has-text('Link'))",
+                                                      "[role='button']:has-text('CONTINUE')",
+                                                  ]:
+                                                      try:
+                                                          _cb = page.locator(_cont_sel).first
+                                                          _cb.wait_for(state="visible", timeout=2000)
+                                                          _cb.click()
+                                                          _bank_popup_dismissed = True
+                                                          _cont_clicked = True
+                                                          log(f"[{idx+1}] ✓ Đã click Continue dismiss bank popup")
+                                                          page.wait_for_timeout(2000)
+                                                          break
+                                                      except Exception:
+                                                          pass
+                                                  if not _cont_clicked:
+                                                      log(f"[{idx+1}] ⚠ Có bank popup nhưng không click được Continue")
+                                          except Exception:
+                                              pass
+                                      # -- Check card field re-enabled --
                                       for _fsel in _field_selectors:
                                           try:
                                               _fl = page.locator(_fsel).first
@@ -1718,7 +1795,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   if _field_enabled:
                                       log(f"[{idx+1}] ✓ Card field đã re-enable ({_twait.time()-_wait_t0:.1f}s)")
                                   else:
-                                      log(f"[{idx+1}] ⚠ Card field vẫn disabled sau 10s — thử fill anyway")
+                                      log(f"[{idx+1}] ⚠ Card field vẫn disabled sau 30s — thử fill anyway")
                                   page.wait_for_timeout(300)
 
                                   # ── Clear + fill Card Number ──
@@ -4841,6 +4918,41 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               except Exception:
                                   pass
 
+                              # -- 0b. Bank OTP popup overlay (không phải iframe — render trong Stripe page) --
+                              try:
+                                  _bp_txt2 = page.evaluate("""
+                                      () => {
+                                          const t = document.body ? document.body.innerText : '';
+                                          return t.includes('Keep your account safe')
+                                              || t.includes('one time code')
+                                              || t.includes('verification code');
+                                      }
+                                  """)
+                                  if _bp_txt2 and not _otp_required:
+                                      log(f"[{idx+1}] 🏦 Bank OTP overlay trong Stripe — click Continue dismiss ({_elapsed:.1f}s)")
+                                      _dismissed2 = False
+                                      for _bs2 in [
+                                          "button.ButtonElement:has-text('CONTINUE')",
+                                          "button:has-text('CONTINUE')",
+                                          "button[type='submit']:has-text('CONTINUE')",
+                                          "button:has-text('Continue'):not(:has-text('Link'))",
+                                      ]:
+                                          try:
+                                              _bl2 = page.locator(_bs2).first
+                                              _bl2.wait_for(state="visible", timeout=1500)
+                                              _bl2.click()
+                                              _dismissed2 = True
+                                              log(f"[{idx+1}] ✓ Dismissed bank popup — tiếp tục poll")
+                                              page.wait_for_timeout(1500)
+                                              break
+                                          except Exception:
+                                              pass
+                                      if not _dismissed2:
+                                          log(f"[{idx+1}] ⚠ Bank popup nhưng không dismiss được — mark OTP required")
+                                          _otp_required = True
+                                          break
+                              except Exception: pass
+
                               # -- 1. Check error text TRƯỚC (quan trọng nhất) --
                               _txt = _get_page_text()
 
@@ -5075,6 +5187,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                       return False
 
                               # Đợi field card re-enable sau declined (Stripe lock field 1-3s)
+                              # + detect & dismiss bank OTP popup (VISA/Regions/etc overlay trong Stripe)
                               import time as _twait
                               _field_selectors = [
                                   'input[name="cardnumber"]', 'input[autocomplete="cc-number"]',
@@ -5082,8 +5195,49 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                   'input#cardNumber'
                               ]
                               _field_enabled = False
+                              _bank_popup_dismissed = False
                               _wait_t0 = _twait.time()
-                              while _twait.time() - _wait_t0 < 10:
+                              while _twait.time() - _wait_t0 < 30:
+                                  # -- Detect bank OTP/auth popup (overlay trong Stripe page) --
+                                  if not _bank_popup_dismissed:
+                                      try:
+                                          _bank_popup = page.evaluate("""
+                                              () => {
+                                                  const _txt = document.body ? document.body.innerText : '';
+                                                  const hasPopup = _txt.includes('Keep your account safe')
+                                                      || _txt.includes('authenticate')
+                                                      || _txt.includes('one time code')
+                                                      || _txt.includes('verification code');
+                                                  return hasPopup;
+                                              }
+                                          """)
+                                          if _bank_popup:
+                                              log(f"[{idx+1}] 🏦 Bank OTP popup detected — click Continue để dismiss")
+                                              # Thử click nút Continue (không phải "Continue with Link")
+                                              _cont_clicked = False
+                                              for _cont_sel in [
+                                                  "button.ButtonElement:has-text('CONTINUE')",
+                                                  "button:has-text('CONTINUE')",
+                                                  "button[type='submit']:has-text('CONTINUE')",
+                                                  "button:has-text('Continue'):not(:has-text('Link'))",
+                                                  "[role='button']:has-text('CONTINUE')",
+                                              ]:
+                                                  try:
+                                                      _cb = page.locator(_cont_sel).first
+                                                      _cb.wait_for(state="visible", timeout=2000)
+                                                      _cb.click()
+                                                      _bank_popup_dismissed = True
+                                                      _cont_clicked = True
+                                                      log(f"[{idx+1}] ✓ Đã click Continue dismiss bank popup")
+                                                      page.wait_for_timeout(2000)
+                                                      break
+                                                  except Exception:
+                                                      pass
+                                              if not _cont_clicked:
+                                                  log(f"[{idx+1}] ⚠ Có bank popup nhưng không click được Continue")
+                                      except Exception:
+                                          pass
+                                  # -- Check card field re-enabled --
                                   for _fsel in _field_selectors:
                                       try:
                                           _fl = page.locator(_fsel).first
@@ -5100,7 +5254,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                               if _field_enabled:
                                   log(f"[{idx+1}] ✓ Card field đã re-enable ({_twait.time()-_wait_t0:.1f}s)")
                               else:
-                                  log(f"[{idx+1}] ⚠ Card field vẫn disabled sau 10s — thử fill anyway")
+                                  log(f"[{idx+1}] ⚠ Card field vẫn disabled sau 30s — thử fill anyway")
                               page.wait_for_timeout(300)
 
                               # ── Clear + fill Card Number ──

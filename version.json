@@ -1,5 +1,5 @@
 {
-  "version": "1.4.4",
+  "version": "1.4.5",
   "updated": "2026-06-22",
-  "notes": "Bug1: them extra wait 15s truoc restart (proxy cham van dang process); Bug2: fix click nham Continue with Link o signup step; Bug3: AutoV2 ho tro chon nhieu proxy, chay song song."
+  "notes": "Fix OTP/bank popup overlay trong Stripe: detect 'Keep your account safe' → click Continue dismiss → card field re-enable. Applies to both flow 1 and flow 2, during pay poll and during clear+fill wait."
 }
