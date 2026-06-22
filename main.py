@@ -904,6 +904,71 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                     page.wait_for_load_state("networkidle", timeout=10000)
                                 except Exception:
                                     pass
+
+                                # ── DISMISS "Continue with Link" (Stripe Link autofill) ────
+                                # Stripe Link tự điền email cũ → hiện nút "Continue with Link"
+                                # thay vì form card. Phải dismiss trước khi điền thẻ.
+                                try:
+                                    _link_dismissed = False
+                                    for _ld_attempt in range(3):
+                                        _link_btn = page.query_selector(
+                                            'button:has-text("Continue with Link"), '
+                                            'button[data-testid*="link"], '
+                                            'a:has-text("Continue with Link")'
+                                        )
+                                        if not _link_btn:
+                                            # Check trong frames
+                                            for _fr in page.frames:
+                                                try:
+                                                    _link_btn = _fr.query_selector(
+                                                        'button:has-text("Continue with Link"), '
+                                                        'button[data-testid*="link"]'
+                                                    )
+                                                    if _link_btn:
+                                                        break
+                                                except Exception:
+                                                    pass
+                                        if _link_btn:
+                                            log(f"[{idx+1}] ⚠ Phát hiện 'Continue with Link' — đang dismiss...")
+                                            # Tìm nút "Cancel" / "Use a different email" / "×" để đóng
+                                            _dismissed = False
+                                            for _cancel_sel in [
+                                                'button:has-text("Cancel")',
+                                                'button:has-text("Use a different")',
+                                                'button[aria-label*="close" i]',
+                                                'button[aria-label*="dismiss" i]',
+                                                '[data-testid*="close"]',
+                                                'button:has-text("×")',
+                                            ]:
+                                                try:
+                                                    _cancel = page.query_selector(_cancel_sel)
+                                                    if _cancel and _cancel.is_visible():
+                                                        _cancel.click()
+                                                        page.wait_for_timeout(1000)
+                                                        _dismissed = True
+                                                        log(f"[{idx+1}] ✓ Đã click cancel/dismiss Stripe Link")
+                                                        break
+                                                except Exception:
+                                                    pass
+                                            if not _dismissed:
+                                                # Fallback: nhấn Escape để đóng overlay
+                                                try:
+                                                    page.keyboard.press("Escape")
+                                                    page.wait_for_timeout(800)
+                                                    log(f"[{idx+1}] ✓ Đã Escape Stripe Link overlay")
+                                                    _dismissed = True
+                                                except Exception:
+                                                    pass
+                                            if _dismissed:
+                                                page.wait_for_timeout(1000)
+                                                _link_dismissed = True
+                                                break
+                                        else:
+                                            break  # không có "Continue with Link" → tiếp tục
+                                    if _link_dismissed:
+                                        log(f"[{idx+1}] ✓ Stripe Link đã bị dismiss, tiếp tục điền thẻ thủ công")
+                                except Exception as _ld_ex:
+                                    log(f"[{idx+1}] ⚠ Lỗi dismiss Stripe Link: {_ld_ex}")
   
                                 log(f"[{idx+1}] ⏳ Chờ ô nhập thẻ SẴN SÀNG (visible+enabled, tối đa 45s)...")
                                 _card_ctx, _card_loc = (None, None)
@@ -3187,6 +3252,184 @@ def get_dashboard():
     }
 
 # ─── Static ────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTO V2 — Tự tạo profile + chạy tuần tự, 1 proxy tối đa 5 profile
+# ══════════════════════════════════════════════════════════════════════════════
+
+class AutoV2Request(BaseModel):
+    proxy_id:    str          # ID proxy trong pool
+    script_id:   str          # script để chạy (vd "dropaudit")
+    num_profiles: int = 1     # số profile tạo (1-5)
+    delay_between: int = 300  # giây chờ giữa 2 profile (mặc định 5 phút)
+
+_autov2_tasks: dict = {}  # autov2_id → trạng thái
+
+@app.post("/api/autov2/run")
+def autov2_run(body: AutoV2Request):
+    if body.script_id not in SCRIPT_RUNNERS:
+        raise HTTPException(404, "Script not found")
+    num = max(1, min(5, body.num_profiles))  # clamp 1-5
+
+    # Tìm proxy
+    proxies_data = load_proxies()
+    proxy = next((p for p in proxies_data.get("proxies", []) if p.get("id") == body.proxy_id), None)
+    if not proxy:
+        raise HTTPException(404, "Proxy không tìm thấy")
+
+    # Đếm profile đã dùng proxy này
+    data = load_data()
+    existing_use = sum(
+        1 for p in data["profiles"].values()
+        if p.get("proxy_server", "").find(proxy.get("host", "")) >= 0
+    )
+    available_slots = max(0, 5 - existing_use)
+    if available_slots == 0:
+        raise HTTPException(400, f"Proxy {proxy['host']} đã dùng đủ 5 profile")
+    num = min(num, available_slots)
+
+    runner = SCRIPT_RUNNERS[body.script_id]
+    av2_id = str(uuid.uuid4())[:8]
+
+    _autov2_tasks[av2_id] = {
+        "id":          av2_id,
+        "proxy_id":    body.proxy_id,
+        "proxy_host":  proxy.get("host", ""),
+        "script_id":   body.script_id,
+        "num_profiles": num,
+        "delay_between": body.delay_between,
+        "status":      "running",
+        "created_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
+        "profiles_done": 0,
+        "task_ids":    [],
+        "logs":        [],
+    }
+
+    def _autov2_worker():
+        av2 = _autov2_tasks[av2_id]
+
+        def _log(msg):
+            av2["logs"].append(f"[{time.strftime('%H:%M:%S')}] {msg}")
+
+        _log(f"▶ AutoV2 bắt đầu: {num} profile, proxy {proxy['host']}")
+
+        proxy_server = proxy.get("proxy_server") or f"socks5://{proxy['host']}:{proxy['port']}"
+        proxy_user   = proxy.get("username", "")
+        proxy_pass   = proxy.get("password", "")
+
+        for i in range(num):
+            if av2.get("_stop"):
+                _log("⏹ Đã dừng")
+                break
+
+            # Tạo profile mới tự động
+            pid  = str(uuid.uuid4())[:8]
+            pname = f"AutoV2-{proxy['host'].split('.')[-1]}-{i+1}-{pid[:4]}"
+            new_profile = {
+                "id":            pid,
+                "name":          pname,
+                "proxy_server":  proxy_server,
+                "proxy_username": proxy_user,
+                "proxy_password": proxy_pass,
+                "seed":          random.randint(1, 999999),
+                "timezone":      "America/New_York",
+                "created_at":    time.strftime("%Y-%m-%d %H:%M:%S"),
+                "auto_created":  True,
+                "proxy_usage_count": 0,
+            }
+            _data = load_data()
+            _data["profiles"][pid] = new_profile
+            save_data(_data)
+            _log(f"[{i+1}/{num}] ✓ Tạo profile: {pname}")
+
+            # Lấy row từ queue
+            row = queue_pop()
+            if row is None:
+                _log(f"[{i+1}/{num}] ✗ Queue rỗng — dừng AutoV2")
+                av2["status"] = "done_queue_empty"
+                break
+            row_idx = row.get("_idx", 0)
+
+            # Tạo task
+            tid = str(uuid.uuid4())[:8]
+            running_tasks[tid] = {
+                "id":           tid,
+                "script_id":    body.script_id,
+                "profile_id":   pid,
+                "profile_name": pname,
+                "status":       "running",
+                "alive":        True,
+                "total":        1,
+                "done":         0,
+                "logs":         deque(maxlen=500),
+                "results":      [],
+                "created_at":   time.strftime("%Y-%m-%d %H:%M:%S"),
+                "_stop_event":  threading.Event(),
+                "_autov2_id":   av2_id,
+            }
+            av2["task_ids"].append(tid)
+            _log(f"[{i+1}/{num}] ▶ Chạy task {tid} cho {pname}")
+
+            # Chạy ĐỒNG BỘ trong thread này (tuần tự)
+            _done_event = threading.Event()
+            def _run_task(t_id, profile, row_data, ri, _evt=_done_event):
+                try:
+                    runner(t_id, profile, [row_data])
+                    final = running_tasks.get(t_id, {}).get("status", "done")
+                    queue_done(ri, "done" if final == "done" else "failed")
+                except Exception as ex:
+                    if t_id in running_tasks:
+                        running_tasks[t_id]["status"] = "failed"
+                    queue_done(ri, "failed")
+                finally:
+                    _evt.set()
+
+            t = threading.Thread(target=_run_task, args=(tid, new_profile, row, row_idx), daemon=True)
+            t.start()
+            _done_event.wait()  # chờ profile này xong hẳn
+            av2["profiles_done"] += 1
+            _log(f"[{i+1}/{num}] ✓ Profile {pname} hoàn thành")
+
+            # Chờ giữa các profile (trừ lần cuối)
+            if i < num - 1:
+                wait_sec = body.delay_between
+                _log(f"[{i+1}/{num}] ⏳ Chờ {wait_sec}s trước profile tiếp theo...")
+                for _ws in range(wait_sec):
+                    if av2.get("_stop"):
+                        break
+                    time.sleep(1)
+
+        av2["status"] = av2.get("status") or "done"
+        _log(f"✅ AutoV2 hoàn thành: {av2['profiles_done']}/{num} profile")
+
+    t_av2 = threading.Thread(target=_autov2_worker, daemon=True)
+    t_av2.start()
+
+    return {"autov2_id": av2_id, "num_profiles": num, "proxy": proxy.get("host")}
+
+
+@app.get("/api/autov2")
+def autov2_list():
+    return list(_autov2_tasks.values())
+
+
+@app.get("/api/autov2/{av2_id}")
+def autov2_status(av2_id: str):
+    av2 = _autov2_tasks.get(av2_id)
+    if not av2:
+        raise HTTPException(404, "Không tìm thấy")
+    return av2
+
+
+@app.post("/api/autov2/{av2_id}/stop")
+def autov2_stop(av2_id: str):
+    av2 = _autov2_tasks.get(av2_id)
+    if not av2:
+        raise HTTPException(404, "Không tìm thấy")
+    av2["_stop"] = True
+    av2["status"] = "stopping"
+    return {"ok": True}
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/api/version")
@@ -4002,7 +4245,67 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
                                 page.wait_for_load_state("networkidle", timeout=10000)
                             except Exception:
                                 pass
-  
+
+                            # ── DISMISS "Continue with Link" (Stripe Link autofill) ────
+                            try:
+                                _link_dismissed = False
+                                for _ld_attempt in range(3):
+                                    _link_btn = page.query_selector(
+                                        'button:has-text("Continue with Link"), '
+                                        'button[data-testid*="link"], '
+                                        'a:has-text("Continue with Link")'
+                                    )
+                                    if not _link_btn:
+                                        for _fr in page.frames:
+                                            try:
+                                                _link_btn = _fr.query_selector(
+                                                    'button:has-text("Continue with Link"), '
+                                                    'button[data-testid*="link"]'
+                                                )
+                                                if _link_btn:
+                                                    break
+                                            except Exception:
+                                                pass
+                                    if _link_btn:
+                                        log(f"[{idx+1}] ⚠ Phát hiện 'Continue with Link' — đang dismiss...")
+                                        _dismissed = False
+                                        for _cancel_sel in [
+                                            'button:has-text("Cancel")',
+                                            'button:has-text("Use a different")',
+                                            'button[aria-label*="close" i]',
+                                            'button[aria-label*="dismiss" i]',
+                                            '[data-testid*="close"]',
+                                            'button:has-text("×")',
+                                        ]:
+                                            try:
+                                                _cancel = page.query_selector(_cancel_sel)
+                                                if _cancel and _cancel.is_visible():
+                                                    _cancel.click()
+                                                    page.wait_for_timeout(1000)
+                                                    _dismissed = True
+                                                    log(f"[{idx+1}] ✓ Đã click cancel/dismiss Stripe Link")
+                                                    break
+                                            except Exception:
+                                                pass
+                                        if not _dismissed:
+                                            try:
+                                                page.keyboard.press("Escape")
+                                                page.wait_for_timeout(800)
+                                                log(f"[{idx+1}] ✓ Đã Escape Stripe Link overlay")
+                                                _dismissed = True
+                                            except Exception:
+                                                pass
+                                        if _dismissed:
+                                            page.wait_for_timeout(1000)
+                                            _link_dismissed = True
+                                            break
+                                    else:
+                                        break
+                                if _link_dismissed:
+                                    log(f"[{idx+1}] ✓ Stripe Link đã bị dismiss, tiếp tục điền thẻ thủ công")
+                            except Exception as _ld_ex:
+                                log(f"[{idx+1}] ⚠ Lỗi dismiss Stripe Link: {_ld_ex}")
+
                             log(f"[{idx+1}] ⏳ Chờ ô nhập thẻ SẴN SÀNG (visible+enabled, tối đa 45s)...")
                             _card_ctx, _card_loc = (None, None)
                             _card_field_dl = _t_top.time() + 45.0

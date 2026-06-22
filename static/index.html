@@ -95,14 +95,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 .toast.ok{border-color:var(--accent2);color:var(--accent2);}
 .toast.err{border-color:var(--danger);color:var(--danger);}
 
-/* LOGS PAGE */
-.logs-grid{display:flex;flex-direction:column;gap:14px;}
-.log-card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
-.log-card-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:#1a2030;}
-.log-card-head .pname{font-weight:700;font-size:.9rem;}
-.log-card-head .row-info{font-size:.75rem;color:var(--muted);margin-left:4px;}
-.log-card-body{padding:12px 16px;font-family:monospace;font-size:.76rem;line-height:1.7;color:#a0b0c8;max-height:180px;overflow-y:auto;background:#0a0c10;}
-.log-line.ok{color:var(--accent2);}.log-line.err{color:var(--danger);}.log-line.warn{color:var(--warn);}.log-line.info{color:var(--accent);}
+/* LOGS PAGE — multi-column */
+.logs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;align-items:start;}
+.logs-grid.single{grid-template-columns:1fr;}
+.log-card{background:#0d0f18;border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;}
+.log-card-head{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);background:#131825;flex-shrink:0;}
+.log-card-head .pname{font-weight:700;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;}
+.log-card-head .row-info{font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;}
+.log-card-body{padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:.68rem;line-height:1.55;color:#8899aa;height:260px;overflow-y:auto;background:#080a0e;}
+.log-line{padding:0 2px;white-space:pre-wrap;word-break:break-all;}
+.log-line.ok{color:#3de07a;}.log-line.err{color:#ff5555;}.log-line.warn{color:#ffcc44;}.log-line.info{color:#55aaff;}
+.log-line.dim{color:#445566;}
+/* AutoV2 */
+.av2-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;}
+.av2-card h4{font-size:.85rem;font-weight:700;margin-bottom:10px;color:var(--accent);}
+.av2-log{font-family:'JetBrains Mono',monospace;font-size:.7rem;line-height:1.6;color:#8899aa;background:#08090e;border-radius:6px;padding:8px;max-height:140px;overflow-y:auto;margin-top:8px;}
 
 .proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
 .proxy-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;}
@@ -145,6 +152,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 <nav class="tabs">
   <div class="tab active" onclick="switchTab('profiles')">Profiles</div>
   <div class="tab" onclick="switchTab('automation')">Automation</div>
+  <div class="tab" onclick="switchTab('autov2')">⚡ AutoV2</div>
   <div class="tab" onclick="switchTab('logs')">Logs</div>
   <div class="tab" onclick="switchTab('proxy')">Proxy</div>
   <div class="tab" onclick="switchTab('dashboard')">📊 Dashboard</div>
@@ -315,6 +323,64 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <span style="font-size:.78rem;color:var(--muted);">Mỗi profile chạy song song, lấy 1 bản ghi từ queue.</span>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ==================== AUTO V2 ==================== -->
+<div class="page" id="page-autov2">
+  <div class="section-head">
+    <h2>⚡ AutoV2</h2>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" onclick="loadAutoV2Page()">🔄 Refresh</button>
+  </div>
+
+  <!-- Config panel -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <!-- Chọn Proxy -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">
+      <h3 style="font-size:.88rem;font-weight:700;margin-bottom:12px;">1 · Chọn Proxy</h3>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Proxy (chỉ chọn 1)</label>
+        <select id="av2-proxy-select" style="width:100%;" onchange="av2ProxyChange()">
+          <option value="">— Đang tải proxy... —</option>
+        </select>
+      </div>
+      <div id="av2-proxy-info" style="font-size:.75rem;color:var(--muted);margin-top:4px;"></div>
+    </div>
+
+    <!-- Cấu hình -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">
+      <h3 style="font-size:.88rem;font-weight:700;margin-bottom:12px;">2 · Cấu hình chạy</h3>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Script</label>
+        <select id="av2-script-select" style="width:100%;"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="form-group" style="margin:0;">
+          <label>Số profile (1–5)</label>
+          <input type="number" id="av2-num-profiles" min="1" max="5" value="3" style="width:100%;">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Delay giữa profile (giây)</label>
+          <input type="number" id="av2-delay" min="10" max="3600" value="300" style="width:100%;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue info + Run -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <div style="font-size:.85rem;">Queue còn: <strong id="av2-queue-count" style="color:var(--accent2);">—</strong> hàng</div>
+    <div style="font-size:.85rem;">Proxy slot còn: <strong id="av2-proxy-slots" style="color:var(--accent);">—</strong> / 5</div>
+    <div class="spacer"></div>
+    <button class="btn btn-success" id="av2-run-btn" onclick="runAutoV2()">▶ Chạy AutoV2</button>
+    <button class="btn btn-danger btn-sm" onclick="stopAllAutoV2()">⏹ Stop tất cả</button>
+  </div>
+
+  <!-- Running AutoV2 tasks -->
+  <h3 style="font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Tiến trình AutoV2</h3>
+  <div id="av2-tasks-list">
+    <div style="color:var(--muted);font-size:.85rem;padding:16px 0;">Chưa có AutoV2 task nào.</div>
   </div>
 </div>
 
@@ -569,7 +635,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll('.tab').forEach((t,i)=>{
-    const names = ['profiles','automation','logs','proxy','dashboard'];
+    const names = ['profiles','automation','autov2','logs','proxy','dashboard'];
     t.classList.toggle('active', names[i]===name);
   });
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -577,6 +643,7 @@ function switchTab(name) {
   if(name==='logs') loadLogs();
   if(name==='profiles') loadProfiles();
   if(name==='automation') { loadProfiles().then(()=>{ renderAutoProfileList(); refreshAutoSummary(); }); }
+  if(name==='autov2') loadAutoV2Page();
   if(name==='dashboard') loadDashboard();
 }
 
@@ -1218,28 +1285,36 @@ async function loadLogs() {
 function renderLogs(tasks) {
   const el = document.getElementById('logs-grid');
   if(!tasks || !tasks.length) {
-    el.innerHTML = `<div class="empty-state"><p>Chưa có task nào đang chạy.</p><p style="margin-top:6px;font-size:.8rem;">Chạy automation từ tab <strong>Automation</strong> để xem logs ở đây.</p></div>`;
+    el.className = 'logs-grid single';
+    el.innerHTML = `<div class="empty-state"><p>Chưa có task nào.</p><p style="margin-top:6px;font-size:.8rem;">Chạy automation từ tab <strong>Automation</strong> hoặc <strong>AutoV2</strong>.</p></div>`;
     return;
   }
+  // multi-column khi >= 2 tasks
+  el.className = tasks.length >= 2 ? 'logs-grid' : 'logs-grid single';
+
   el.innerHTML = tasks.map(t => {
     const profile = profiles.find(p=>p.id===t.profile_id)||{name: t.profile_id||t.id};
-    const logs = (t.logs||[]).slice(-50);
+    const logs = (t.logs||[]).slice(-80);
     const logsHtml = logs.length
       ? logs.map(l=>formatLogLine(l)).join('')
-      : '<span style="color:var(--muted);">Chưa có log...</span>';
+      : '<span style="color:#445566;font-size:.67rem;">Chưa có log...</span>';
 
-    const rowInfo = t.row ? (t.row.raw || JSON.stringify(t.row).slice(0,60)) : '';
+    const isRunning = ['running','starting','queued'].includes(t.status);
+    const statusColors = {running:'#00c9ff',done:'#3de07a',failed:'#ff5555',stopping:'#ffcc44'};
+    const sc = statusColors[t.status]||'#556677';
+
+    // Badge mini — chỉ hiện 1-2 chữ
+    const statusShort = {running:'RUN',done:'DONE',failed:'FAIL',stopping:'STOP',queued:'Q'}[t.status]||t.status.slice(0,4).toUpperCase();
 
     return `<div class="log-card" id="log-card-${t.id}">
       <div class="log-card-head">
-        <span class="pname">${esc(profile.name)}</span>
-        ${rowInfo?`<span class="row-info">· ${esc(rowInfo)}</span>`:''}
+        <span style="width:6px;height:6px;border-radius:50%;background:${sc};flex-shrink:0;${isRunning?'box-shadow:0 0 5px '+sc:''}"></span>
+        <span class="pname" title="${esc(profile.name)}">${esc(profile.name)}</span>
+        <span style="font-size:.65rem;color:${sc};font-weight:700;margin-left:2px;">${statusShort}</span>
         <div class="spacer"></div>
-        <span class="badge badge-${t.status}">${t.status}</span>
-        <button class="btn btn-sm btn-copy-log" onclick="copyLog('${t.id}')" title="Copy log">📋</button>
-        ${['running','starting','queued'].includes(t.status)
-          ? `<button class="btn btn-danger btn-sm" onclick="stopTask('${t.id}')">Stop</button>`
-          : ''}
+        <span style="font-size:.65rem;color:var(--muted);">${t.done||0}/${t.total||1}</span>
+        <button class="btn btn-sm" style="padding:2px 6px;font-size:.65rem;" onclick="copyLog('${t.id}')" title="Copy">📋</button>
+        ${isRunning?`<button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:.65rem;" onclick="stopTask('${t.id}')">■</button>`:''}
       </div>
       <div class="log-card-body" id="log-body-${t.id}">${logsHtml}</div>
     </div>`;
@@ -1247,8 +1322,8 @@ function renderLogs(tasks) {
 
   // auto scroll each log body
   tasks.forEach(t => {
-    const el = document.getElementById('log-body-'+t.id);
-    if(el) el.scrollTop = el.scrollHeight;
+    const b = document.getElementById('log-body-'+t.id);
+    if(b) b.scrollTop = b.scrollHeight;
   });
 }
 
@@ -1258,6 +1333,7 @@ function formatLogLine(line) {
   if(/error|lỗi|fail|exception/i.test(s)) cls='err';
   else if(/warn|cảnh báo/i.test(s)) cls='warn';
   else if(/✓|success|done|ok|thành công/i.test(s)) cls='ok';
+  else if(/→|⏳|Chờ|URL Stripe|⏩ Skip/i.test(s)) cls='dim';
   else if(/info|\[/i.test(s)) cls='info';
   return `<div class="log-line ${cls}">${esc(s)}</div>`;
 }
@@ -1933,6 +2009,159 @@ setInterval(() => {
     loadQueue();
   }
 }, 4000);
+
+// ── AutoV2 ────────────────────────────────────────────────────────────────────
+async function loadAutoV2Page() {
+  try {
+    const [rp, rs, rq, ra] = await Promise.all([
+      fetch('/api/proxies').then(r=>r.json()),
+      fetch('/api/scripts').then(r=>r.json()),
+      fetch('/api/queue').then(r=>r.json()),
+      fetch('/api/autov2').then(r=>r.json()),
+    ]);
+
+    // Populate proxy select
+    const pxSel = document.getElementById('av2-proxy-select');
+    if (pxSel) {
+      const proxies = rp.proxies || rp || [];
+      pxSel.innerHTML = '<option value="">-- Chọn Proxy --</option>' +
+        proxies.map(p => `<option value="${p.id}" data-slots="${p.max_slots||5}" data-host="${p.host||''}">${p.host||p.id} (${p.max_slots||5} slots)</option>`).join('');
+    }
+
+    // Populate script select
+    const scSel = document.getElementById('av2-script-select');
+    if (scSel) {
+      const scripts = rs.scripts || rs || [];
+      scSel.innerHTML = '<option value="">-- Chọn Script --</option>' +
+        scripts.map(s => `<option value="${s.id}">${s.name||s.id}</option>`).join('');
+    }
+
+    // Queue count
+    const qLen = (rq.rows || []).length;
+    const qEl = document.getElementById('av2-queue-count');
+    if (qEl) qEl.textContent = qLen;
+
+    // Render tasks
+    renderAutoV2Tasks(ra || []);
+
+    // Refresh slot display if proxy already selected
+    av2ProxyChange();
+  } catch(e) {
+    console.error('loadAutoV2Page error', e);
+    showToast('Lỗi tải trang AutoV2', 'err');
+  }
+}
+
+function av2ProxyChange() {
+  const pxSel = document.getElementById('av2-proxy-select');
+  const infoEl = document.getElementById('av2-proxy-info');
+  const slotsEl = document.getElementById('av2-proxy-slots');
+  if (!pxSel) return;
+  const opt = pxSel.options[pxSel.selectedIndex];
+  if (!opt || !opt.value) {
+    if (infoEl) infoEl.textContent = '';
+    if (slotsEl) slotsEl.textContent = '—';
+    return;
+  }
+  const slots = parseInt(opt.getAttribute('data-slots') || 5);
+  const host = opt.getAttribute('data-host') || opt.text;
+  if (infoEl) infoEl.textContent = `Host: ${host} · Tối đa ${slots} profiles`;
+  if (slotsEl) slotsEl.textContent = slots;
+  // Clamp num input
+  const numIn = document.getElementById('av2-num-profiles');
+  if (numIn) { numIn.max = slots; if (parseInt(numIn.value) > slots) numIn.value = slots; }
+}
+
+async function runAutoV2() {
+  const proxyId = document.getElementById('av2-proxy-select')?.value;
+  const scriptId = document.getElementById('av2-script-select')?.value;
+  const num = parseInt(document.getElementById('av2-num-profiles')?.value || 1);
+  const delay = parseInt(document.getElementById('av2-delay')?.value || 300);
+
+  if (!proxyId) { showToast('Chọn proxy trước', 'err'); return; }
+  if (!scriptId) { showToast('Chọn script trước', 'err'); return; }
+  if (!num || num < 1) { showToast('Số profile phải ≥ 1', 'err'); return; }
+
+  const btn = document.getElementById('av2-run-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/autov2/run', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ proxy_id: proxyId, script_id: scriptId, num_profiles: num, delay_between: delay })
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast(d.detail || 'Lỗi khởi chạy AutoV2', 'err'); return; }
+    showToast(`AutoV2 đã chạy: ${d.num_profiles} profiles`, 'ok');
+    setTimeout(loadAutoV2Page, 800);
+  } catch(e) {
+    showToast('Lỗi kết nối', 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function stopAllAutoV2() {
+  const tasks = document.querySelectorAll('[data-av2id]');
+  if (!tasks.length) { showToast('Không có AutoV2 nào đang chạy', 'err'); return; }
+  let stopped = 0;
+  for (const el of tasks) {
+    const aid = el.getAttribute('data-av2id');
+    try {
+      const r = await fetch(`/api/autov2/${aid}/stop`, {method:'POST'});
+      if (r.ok) stopped++;
+    } catch(e) {}
+  }
+  showToast(`Đã stop ${stopped} AutoV2`, stopped ? 'ok' : 'err');
+  setTimeout(loadAutoV2Page, 500);
+}
+
+async function stopSingleAutoV2(av2Id) {
+  try {
+    const r = await fetch(`/api/autov2/${av2Id}/stop`, {method:'POST'});
+    const d = await r.json();
+    if (r.ok) { showToast('Đã stop AutoV2', 'ok'); setTimeout(loadAutoV2Page, 500); }
+    else showToast(d.detail || 'Lỗi stop', 'err');
+  } catch(e) { showToast('Lỗi kết nối', 'err'); }
+}
+
+function renderAutoV2Tasks(tasks) {
+  const el = document.getElementById('av2-tasks-list');
+  if (!el) return;
+  if (!tasks.length) {
+    el.innerHTML = '<div style="color:#666;font-size:0.8rem;padding:12px 0;">Chưa có AutoV2 nào được chạy.</div>';
+    return;
+  }
+  el.innerHTML = tasks.slice().reverse().map(t => {
+    const statusLabel = {running:'🟢 Đang chạy', done:'✅ Xong', done_queue_empty:'⚠️ Queue rỗng', stopped:'🛑 Đã stop', failed:'❌ Lỗi'}[t.status] || t.status;
+    const pct = t.num_profiles ? Math.round((t.profiles_done||0)/t.num_profiles*100) : 0;
+    const logs = (t.logs||[]).slice(-40).map(l=>formatLogLine(l)).join('');
+    const isRunning = t.status === 'running';
+    return `<div class="av2-card" data-av2id="${t.id}">
+      <div class="av2-card-header">
+        <span class="av2-status">${statusLabel}</span>
+        <span class="av2-meta">Proxy: <b>${t.proxy_host||'?'}</b> · Script: <b>${t.script_id||'?'}</b> · ${t.profiles_done||0}/${t.num_profiles||0} profiles</span>
+        ${isRunning ? `<button class="btn-small btn-danger" onclick="stopSingleAutoV2('${t.id}')">Stop</button>` : ''}
+      </div>
+      <div class="av2-progress-bar"><div class="av2-progress-fill" style="width:${pct}%"></div></div>
+      <div class="av2-log" id="av2-log-${t.id}">${logs || '<span style="color:#555">Chưa có log</span>'}</div>
+    </div>`;
+  }).join('');
+  // Auto-scroll logs
+  tasks.forEach(t => {
+    const logEl = document.getElementById('av2-log-'+t.id);
+    if (logEl) logEl.scrollTop = logEl.scrollHeight;
+  });
+}
+
+// Auto-refresh AutoV2 mỗi 3s khi đang ở tab autov2
+setInterval(async () => {
+  if (currentTab !== 'autov2') return;
+  try {
+    const ra = await fetch('/api/autov2').then(r=>r.json());
+    renderAutoV2Tasks(ra || []);
+  } catch(e) {}
+}, 3000);
 </script>
 </body>
 </html>

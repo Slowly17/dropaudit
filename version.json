@@ -1,5 +1,5 @@
 {
-  "version": "1.4.1",
-  "updated": "2026-06-20",
-  "notes": "Dashboard: hien thi bang the thanh cong (success_results.json), export CSV. Backend luu success record sau moi lan thanh toan thanh cong."
+  "version": "1.4.2",
+  "updated": "2026-06-22",
+  "notes": "AutoV2: JS frontend (loadAutoV2Page, runAutoV2, stopAllAutoV2, renderAutoV2Tasks), fix closure bug _done_event, formatLogLine dim class for noise lines."
 }
