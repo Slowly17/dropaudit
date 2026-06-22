@@ -1,5 +1,5 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "updated": "2026-06-22",
-  "notes": "Xoa toan bo block dismiss Continue with Link — overlay khong can dong, o card van render binh thuong ben duoi."
+  "notes": "Bug1: them extra wait 15s truoc restart (proxy cham van dang process); Bug2: fix click nham Continue with Link o signup step; Bug3: AutoV2 ho tro chon nhieu proxy, chay song song."
 }

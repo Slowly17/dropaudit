@@ -1814,8 +1814,15 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
                             # ── Lỗi unhandled: hết retry mà không có kết quả rõ ràng → restart ──
                             if not _pay_success and not _captcha_blocked and not _need_restart:
-                                log(f"[{idx+1}] ⚠ Hết 5 lần retry không kết quả (fill fail / lỗi lạ) → restart step 1")
-                                _need_restart = True
+                                # BUG1 FIX: proxy chậm có thể vẫn đang process → chờ thêm 15s rồi re-check
+                                log(f"[{idx+1}] ⏳ Hết 5 lần retry — chờ thêm 15s (proxy chậm) ...")
+                                page.wait_for_timeout(15000)
+                                if _is_success_url():
+                                    log(f"[{idx+1}] ✅ Redirect sau 15s wait → {page.url[:80]}")
+                                    _pay_success = True
+                                else:
+                                    log(f"[{idx+1}] ⚠ Vẫn chưa success sau 15s → restart step 1")
+                                    _need_restart = True
 
                             # ── Xử lý sau khi thoát _pay_retry loop ──
                             if _pay_success:
@@ -2201,10 +2208,12 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                     # ── STEP 4: Click Continue ────────────────────────────────
                     log(f"[{idx+1}] Click Continue ...")
+                    # BUG2 FIX: tránh match "Continue with Link" (Stripe Link overlay)
                     smart_click(page, [
-                        "button:has-text('Continue')",
-                        "button[type='submit']:not([disabled])",
+                        "button:has-text('Continue'):not(:has-text('with'))",
+                        "button:has-text('Continue'):not(:has-text('Link'))",
                         "button:has-text('Next')",
+                        "button[type='submit']:not([disabled])",
                     ], label="Continue", timeout=6000)
                     page.wait_for_timeout(1500)
 
@@ -5570,10 +5579,12 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                     # ── STEP 4: Click Continue ────────────────────────────────
                     log(f"[{idx+1}] Click Continue ...")
+                    # BUG2 FIX: tránh match "Continue with Link" (Stripe Link overlay)
                     smart_click(page, [
-                        "button:has-text('Continue')",
-                        "button[type='submit']:not([disabled])",
+                        "button:has-text('Continue'):not(:has-text('with'))",
+                        "button:has-text('Continue'):not(:has-text('Link'))",
                         "button:has-text('Next')",
+                        "button[type='submit']:not([disabled])",
                     ], label="Continue", timeout=6000)
                     page.wait_for_timeout(1500)
 

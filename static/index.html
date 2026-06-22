@@ -340,8 +340,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">
       <h3 style="font-size:.88rem;font-weight:700;margin-bottom:12px;">1 · Chọn Proxy</h3>
       <div class="form-group" style="margin-bottom:10px;">
-        <label>Proxy (chỉ chọn 1)</label>
-        <select id="av2-proxy-select" style="width:100%;" onchange="av2ProxyChange()">
+        <label>Proxy (giữ Ctrl/Cmd để chọn nhiều)</label>
+        <select id="av2-proxy-select" multiple size="4" style="width:100%;">
           <option value="">— Đang tải proxy... —</option>
         </select>
       </div>
@@ -371,7 +371,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
   <!-- Queue info + Run -->
   <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
     <div style="font-size:.85rem;">Queue còn: <strong id="av2-queue-count" style="color:var(--accent2);">—</strong> hàng</div>
-    <div style="font-size:.85rem;">Proxy slot còn: <strong id="av2-proxy-slots" style="color:var(--accent);">—</strong> / 5</div>
     <div class="spacer"></div>
     <button class="btn btn-success" id="av2-run-btn" onclick="runAutoV2()">▶ Chạy AutoV2</button>
     <button class="btn btn-danger btn-sm" onclick="stopAllAutoV2()">⏹ Stop tất cả</button>
@@ -2044,7 +2043,7 @@ async function loadAutoV2Page() {
     // Render tasks
     renderAutoV2Tasks(ra || []);
 
-    // Refresh slot display if proxy already selected
+    // Refresh proxy info display
     av2ProxyChange();
   } catch(e) {
     console.error('loadAutoV2Page error', e);
@@ -2053,46 +2052,47 @@ async function loadAutoV2Page() {
 }
 
 function av2ProxyChange() {
+  // Multi-select: hiển thị số proxy đã chọn
   const pxSel = document.getElementById('av2-proxy-select');
   const infoEl = document.getElementById('av2-proxy-info');
-  const slotsEl = document.getElementById('av2-proxy-slots');
   if (!pxSel) return;
-  const opt = pxSel.options[pxSel.selectedIndex];
-  if (!opt || !opt.value) {
-    if (infoEl) infoEl.textContent = '';
-    if (slotsEl) slotsEl.textContent = '—';
-    return;
+  const selected = Array.from(pxSel.selectedOptions).filter(o => o.value);
+  if (infoEl) {
+    if (selected.length === 0) infoEl.textContent = '';
+    else infoEl.textContent = `Đã chọn ${selected.length} proxy: ${selected.map(o=>o.getAttribute('data-host')||o.text).join(', ')}`;
   }
-  const slots = parseInt(opt.getAttribute('data-slots') || 5);
-  const host = opt.getAttribute('data-host') || opt.text;
-  if (infoEl) infoEl.textContent = `Host: ${host} · Tối đa ${slots} profiles`;
-  if (slotsEl) slotsEl.textContent = slots;
-  // Clamp num input
-  const numIn = document.getElementById('av2-num-profiles');
-  if (numIn) { numIn.max = slots; if (parseInt(numIn.value) > slots) numIn.value = slots; }
 }
 
 async function runAutoV2() {
-  const proxyId = document.getElementById('av2-proxy-select')?.value;
+  const pxSel = document.getElementById('av2-proxy-select');
+  const selectedProxies = pxSel ? Array.from(pxSel.selectedOptions).filter(o => o.value) : [];
   const scriptId = document.getElementById('av2-script-select')?.value;
   const num = parseInt(document.getElementById('av2-num-profiles')?.value || 1);
   const delay = parseInt(document.getElementById('av2-delay')?.value || 300);
 
-  if (!proxyId) { showToast('Chọn proxy trước', 'err'); return; }
+  if (selectedProxies.length === 0) { showToast('Chọn ít nhất 1 proxy', 'err'); return; }
   if (!scriptId) { showToast('Chọn script trước', 'err'); return; }
   if (!num || num < 1) { showToast('Số profile phải ≥ 1', 'err'); return; }
 
   const btn = document.getElementById('av2-run-btn');
   if (btn) btn.disabled = true;
   try {
-    const r = await fetch('/api/autov2/run', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ proxy_id: proxyId, script_id: scriptId, num_profiles: num, delay_between: delay })
+    // Chạy song song: mỗi proxy → 1 POST độc lập
+    const results = await Promise.allSettled(
+      selectedProxies.map(opt =>
+        fetch('/api/autov2/run', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ proxy_id: opt.value, script_id: scriptId, num_profiles: num, delay_between: delay })
+        }).then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || 'Lỗi')))
+      )
+    );
+    let ok = 0, fail = 0;
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') { ok++; }
+      else { fail++; showToast(`Proxy ${selectedProxies[i].getAttribute('data-host')}: ${r.reason}`, 'err'); }
     });
-    const d = await r.json();
-    if (!r.ok) { showToast(d.detail || 'Lỗi khởi chạy AutoV2', 'err'); return; }
-    showToast(`AutoV2 đã chạy: ${d.num_profiles} profiles`, 'ok');
+    if (ok > 0) showToast(`Đã khởi chạy ${ok} proxy song song`, 'ok');
     setTimeout(loadAutoV2Page, 800);
   } catch(e) {
     showToast('Lỗi kết nối', 'err');
