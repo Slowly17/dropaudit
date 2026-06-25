@@ -1,5 +1,5 @@
 {
-  "version": "1.5.6",
+  "version": "1.5.7",
   "updated": "2026-06-25",
-  "notes": "Fix SyntaxError quote lồng nhau trong JS evaluate"
+  "notes": "Fix JS selector dùng double-quote; fix Continue button không click nhầm OAuth buttons (Twitter/X/Apple/Facebook)"
 }

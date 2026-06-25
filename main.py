@@ -2145,19 +2145,18 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     _email_ok = False
 
                     # Thử Playwright locator trước
-                    for _esel in [
-                        "input[type='email']",
-                        "input[name='email']",
-                        "input[placeholder*='email' i]",
-                        "input[placeholder*='name@example' i]",
-                        "input[autocomplete='email']",
-                        "input[type='text']",
-                    ]:
+                    _EMAIL_SELS = [
+                        ('input[type="email"]',              'input[type="email"]'),
+                        ('input[name="email"]',              'input[name="email"]'),
+                        ('input[placeholder*="email" i]',   'input[placeholder*="email" i]'),
+                        ('input[placeholder*="name@example" i]', 'input[placeholder*="name@example" i]'),
+                        ('input[autocomplete="email"]',      'input[autocomplete="email"]'),
+                    ]
+                    for _esel, _js_sel in _EMAIL_SELS:
                         try:
                             _el = page.locator(_esel).first
                             _el.wait_for(state="visible", timeout=3000)
                             # JS click để tránh scroll_into_view timeout trên modal
-                            _js_sel = _esel.replace("'", "\'")
                             page.evaluate(f"document.querySelector('{_js_sel}')?.click()")
                             page.wait_for_timeout(200)
                             _el.fill(email)
@@ -2206,8 +2205,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
                     for _csel in [
-                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
                         "button[type='submit']:has-text('Continue')",
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Twitter')):not(:has-text('Apple')):not(:has-text('Facebook')):not(:has-text(' X '))",
                         "button.auth-btn:has-text('Continue')",
                     ]:
                         try:
@@ -2245,7 +2244,10 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 6: Click Continue / Create Account ──────────────
                     log(f"[{idx+1}] Click Continue/Create ...")
                     for _s6 in [
-                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
+                        "button[type='submit']:has-text('Continue')",
+                        "button[type='submit']:has-text('Create')",
+                        "button[type='submit']:has-text('Sign up')",
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Twitter')):not(:has-text('Apple')):not(:has-text('Facebook')):not(:has-text(' X '))",
                         "button:has-text('Create account')",
                         "button:has-text('Create Account')",
                         "button:has-text('Sign up')",
@@ -5506,19 +5508,18 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     _email_ok = False
 
                     # Thử Playwright locator trước
-                    for _esel in [
-                        "input[type='email']",
-                        "input[name='email']",
-                        "input[placeholder*='email' i]",
-                        "input[placeholder*='name@example' i]",
-                        "input[autocomplete='email']",
-                        "input[type='text']",
-                    ]:
+                    _EMAIL_SELS = [
+                        ('input[type="email"]',              'input[type="email"]'),
+                        ('input[name="email"]',              'input[name="email"]'),
+                        ('input[placeholder*="email" i]',   'input[placeholder*="email" i]'),
+                        ('input[placeholder*="name@example" i]', 'input[placeholder*="name@example" i]'),
+                        ('input[autocomplete="email"]',      'input[autocomplete="email"]'),
+                    ]
+                    for _esel, _js_sel in _EMAIL_SELS:
                         try:
                             _el = page.locator(_esel).first
                             _el.wait_for(state="visible", timeout=3000)
                             # JS click để tránh scroll_into_view timeout trên modal
-                            _js_sel = _esel.replace("'", "\'")
                             page.evaluate(f"document.querySelector('{_js_sel}')?.click()")
                             page.wait_for_timeout(200)
                             _el.fill(email)
@@ -5567,8 +5568,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
                     for _csel in [
-                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
                         "button[type='submit']:has-text('Continue')",
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Twitter')):not(:has-text('Apple')):not(:has-text('Facebook')):not(:has-text(' X '))",
                         "button.auth-btn:has-text('Continue')",
                     ]:
                         try:
@@ -5606,7 +5607,10 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     # ── STEP 6: Click Continue / Create Account ──────────────
                     log(f"[{idx+1}] Click Continue/Create ...")
                     for _s6 in [
-                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
+                        "button[type='submit']:has-text('Continue')",
+                        "button[type='submit']:has-text('Create')",
+                        "button[type='submit']:has-text('Sign up')",
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Twitter')):not(:has-text('Apple')):not(:has-text('Facebook')):not(:has-text(' X '))",
                         "button:has-text('Create account')",
                         "button:has-text('Create Account')",
                         "button:has-text('Sign up')",
