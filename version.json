@@ -1,5 +1,5 @@
 {
-  "version": "1.5.3",
+  "version": "1.5.4",
   "updated": "2026-06-25",
-  "notes": "Simen.ai step3: log exception từng selector để debug fill thất bại"
+  "notes": "Simen.ai step3: fallback JS inject email qua nativeInputValueSetter + React dispatchEvent khi locator fill thất bại"
 }

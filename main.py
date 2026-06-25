@@ -2143,6 +2143,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     # Chờ thêm 1s cho animation popup xong hẳn
                     page.wait_for_timeout(1000)
                     _email_ok = False
+
+                    # Thử Playwright locator trước
                     for _esel in [
                         "input[type='email']",
                         "input[name='email']",
@@ -2153,26 +2155,53 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     ]:
                         try:
                             _el = page.locator(_esel).first
-                            _el.wait_for(state="visible", timeout=5000)
-                            # scroll vào view, focus, rồi fill
+                            _el.wait_for(state="visible", timeout=3000)
                             _el.scroll_into_view_if_needed()
                             page.wait_for_timeout(300)
                             _el.click()
                             page.wait_for_timeout(200)
                             _el.fill(email)
                             page.wait_for_timeout(200)
-                            # verify
                             _got = _el.input_value()
                             if _got.strip():
                                 _email_ok = True
                                 log(f"[{idx+1}] ✓ Email điền xong ({_esel}): {_got}")
                                 break
                             else:
-                                log(f"[{idx+1}] ✗ fill() xong nhưng value rỗng ({_esel})")
+                                log(f"[{idx+1}] ✗ fill() rỗng ({_esel})")
                         except Exception as _ee:
-                            log(f"[{idx+1}] ✗ {_esel}: {_ee}")
+                            log(f"[{idx+1}] ✗ {_esel}: {type(_ee).__name__}: {str(_ee)[:80]}")
+
+                    # Fallback: inject qua JS (bypass shadow DOM / React controlled input)
                     if not _email_ok:
-                        raise Exception("Không điền được email input (fill thất bại)")
+                        log(f"[{idx+1}] ⚙ Thử JS inject email ...")
+                        try:
+                            _js_ok = page.evaluate(f"""
+                                (emailVal) => {{
+                                    const inp = document.querySelector(
+                                        "input[type='email'], input[name='email'], input[placeholder*='email' i], input[type='text']"
+                                    );
+                                    if (!inp) return false;
+                                    inp.focus();
+                                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                        window.HTMLInputElement.prototype, 'value'
+                                    ).set;
+                                    nativeInputValueSetter.call(inp, emailVal);
+                                    inp.dispatchEvent(new Event('input', {{bubbles: true}}));
+                                    inp.dispatchEvent(new Event('change', {{bubbles: true}}));
+                                    return inp.value;
+                                }}
+                            """, email)
+                            if _js_ok:
+                                log(f"[{idx+1}] ✓ Email JS inject OK: {_js_ok}")
+                                _email_ok = True
+                            else:
+                                log(f"[{idx+1}] ✗ JS inject: không tìm thấy input trên page")
+                        except Exception as _je:
+                            log(f"[{idx+1}] ✗ JS inject lỗi: {_je}")
+
+                    if not _email_ok:
+                        raise Exception("Không điền được email input (cả locator lẫn JS đều fail)")
 
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
@@ -5475,6 +5504,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     # Chờ thêm 1s cho animation popup xong hẳn
                     page.wait_for_timeout(1000)
                     _email_ok = False
+
+                    # Thử Playwright locator trước
                     for _esel in [
                         "input[type='email']",
                         "input[name='email']",
@@ -5485,26 +5516,53 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     ]:
                         try:
                             _el = page.locator(_esel).first
-                            _el.wait_for(state="visible", timeout=5000)
-                            # scroll vào view, focus, rồi fill
+                            _el.wait_for(state="visible", timeout=3000)
                             _el.scroll_into_view_if_needed()
                             page.wait_for_timeout(300)
                             _el.click()
                             page.wait_for_timeout(200)
                             _el.fill(email)
                             page.wait_for_timeout(200)
-                            # verify
                             _got = _el.input_value()
                             if _got.strip():
                                 _email_ok = True
                                 log(f"[{idx+1}] ✓ Email điền xong ({_esel}): {_got}")
                                 break
                             else:
-                                log(f"[{idx+1}] ✗ fill() xong nhưng value rỗng ({_esel})")
+                                log(f"[{idx+1}] ✗ fill() rỗng ({_esel})")
                         except Exception as _ee:
-                            log(f"[{idx+1}] ✗ {_esel}: {_ee}")
+                            log(f"[{idx+1}] ✗ {_esel}: {type(_ee).__name__}: {str(_ee)[:80]}")
+
+                    # Fallback: inject qua JS (bypass shadow DOM / React controlled input)
                     if not _email_ok:
-                        raise Exception("Không điền được email input (fill thất bại)")
+                        log(f"[{idx+1}] ⚙ Thử JS inject email ...")
+                        try:
+                            _js_ok = page.evaluate(f"""
+                                (emailVal) => {{
+                                    const inp = document.querySelector(
+                                        "input[type='email'], input[name='email'], input[placeholder*='email' i], input[type='text']"
+                                    );
+                                    if (!inp) return false;
+                                    inp.focus();
+                                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                        window.HTMLInputElement.prototype, 'value'
+                                    ).set;
+                                    nativeInputValueSetter.call(inp, emailVal);
+                                    inp.dispatchEvent(new Event('input', {{bubbles: true}}));
+                                    inp.dispatchEvent(new Event('change', {{bubbles: true}}));
+                                    return inp.value;
+                                }}
+                            """, email)
+                            if _js_ok:
+                                log(f"[{idx+1}] ✓ Email JS inject OK: {_js_ok}")
+                                _email_ok = True
+                            else:
+                                log(f"[{idx+1}] ✗ JS inject: không tìm thấy input trên page")
+                        except Exception as _je:
+                            log(f"[{idx+1}] ✗ JS inject lỗi: {_je}")
+
+                    if not _email_ok:
+                        raise Exception("Không điền được email input (cả locator lẫn JS đều fail)")
 
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
