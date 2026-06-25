@@ -2104,19 +2104,37 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             page.locator("text=Get Started").first.click()
                         except Exception:
                             pass
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(2000)
 
-                    # ── STEP 3: Điền email vào popup modal ───────────────────
-                    log(f"[{idx+1}] Điền email vào popup ...")
-                    # Debug: log URL + tất cả input hiện có
+                    # ── STEP 3: Tìm email input (popup modal hoặc navigate sang /signup) ─
+                    log(f"[{idx+1}] Chờ email input xuất hiện ...")
                     _cur_url = page.url
-                    log(f"[{idx+1}] DEBUG URL sau click: {_cur_url}")
+                    log(f"[{idx+1}] URL sau click: {_cur_url}")
+                    if "signup" in _cur_url or "register" in _cur_url or "login" in _cur_url or "signin" in _cur_url:
+                        log(f"[{idx+1}] → Đã navigate sang auth page")
+                        page.wait_for_timeout(2000)
+                    else:
+                        # Chờ popup modal hoặc navigation (tối đa 12s)
+                        for _wi in range(12):
+                            _u2 = page.url
+                            if "signup" in _u2 or "register" in _u2 or "login" in _u2 or "signin" in _u2:
+                                log(f"[{idx+1}] → Navigate: {_u2[:60]}")
+                                page.wait_for_timeout(1500)
+                                break
+                            try:
+                                _chk = page.locator("input[type='email'], input[name='email'], input[placeholder*='email' i]").first
+                                _chk.wait_for(state="visible", timeout=1000)
+                                log(f"[{idx+1}] → Email input visible (popup)")
+                                break
+                            except Exception:
+                                pass
+                            page.wait_for_timeout(1000)
+                    # Debug dump
                     try:
                         _all_inputs = page.evaluate("""() => {
                             return Array.from(document.querySelectorAll('input')).map(e => ({
                                 type: e.type, name: e.name, placeholder: e.placeholder,
-                                id: e.id, className: e.className.substring(0,60),
-                                visible: e.offsetWidth > 0 && e.offsetHeight > 0
+                                id: e.id, visible: e.offsetWidth > 0 && e.offsetHeight > 0
                             }));
                         }""")
                         log(f"[{idx+1}] DEBUG inputs: {_all_inputs}")
@@ -2128,12 +2146,12 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         "input[name='email']",
                         "input[placeholder*='email' i]",
                         "input[placeholder*='name@example' i]",
+                        "input[autocomplete='email']",
                         "input[type='text']",
-                        "input:not([type='hidden'])",
                     ]:
                         try:
                             _el = page.locator(_esel).first
-                            _el.wait_for(state="visible", timeout=10000)
+                            _el.wait_for(state="visible", timeout=5000)
                             _el.triple_click()
                             _el.type(email, delay=60)
                             _email_ok = True
@@ -2142,7 +2160,18 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         except Exception:
                             pass
                     if not _email_ok:
-                        raise Exception("Không tìm được email input trong popup")
+                        log(f"[{idx+1}] ⚠ Không thấy email input — thử /signup trực tiếp")
+                        try:
+                            page.goto("https://simen.ai/signup", wait_until="domcontentloaded", timeout=20000)
+                            page.wait_for_timeout(2000)
+                            _el2 = page.locator("input[type='email'], input[name='email'], input[placeholder*='email' i]").first
+                            _el2.wait_for(state="visible", timeout=8000)
+                            _el2.triple_click()
+                            _el2.type(email, delay=60)
+                            _email_ok = True
+                            log(f"[{idx+1}] ✓ Email điền xong (qua /signup fallback)")
+                        except Exception as _fe:
+                            raise Exception(f"Không tìm được email input: {_fe}")
 
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
@@ -2495,638 +2524,6 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
         push_task_log(tid, "🏁 Script hoàn tất.")
 
 
-    def log(msg):
-        push_task_log(tid, msg)
-
-    def alive():
-        return running_tasks.get(tid, {}).get("alive", False)
-
-    def smart_click(page, selectors, label="button", timeout=12000):
-        """Thử nhiều selector, chờ visible + enabled rồi click."""
-        for sel in selectors:
-            try:
-                el = page.locator(sel).first
-                el.wait_for(state="visible", timeout=timeout)
-                el.scroll_into_view_if_needed()
-                page.wait_for_timeout(200 + _rnd.randint(0, 200))
-                el.click()
-                log(f"✓ {label}: {sel[:60]}")
-                return True
-            except Exception:
-                continue
-        return False
-
-    def smart_fill(page, selectors, value, label="input", timeout=10000):
-        """Điền input thông minh: chờ visible, clear, type từng ký tự."""
-        for sel in selectors:
-            try:
-                el = page.locator(sel).first
-                el.wait_for(state="visible", timeout=timeout)
-                el.click()
-                page.wait_for_timeout(150)
-                el.select_text()
-                page.wait_for_timeout(100)
-                el.press("Control+a")
-                el.press("Backspace")
-                page.wait_for_timeout(100)
-                for ch in value:
-                    el.press_sequentially(ch, delay=50 + _rnd.randint(0, 40))
-                log(f"✓ {label} điền xong")
-                return True
-            except Exception:
-                continue
-        return False
-
-    def frame_fill(page, selectors, value, label="card input", retries=5):
-        """Điền input — tương thích Firefox cross-origin Stripe iframes.
-        
-        Strategy A: Main page inputs (Stripe Hosted Checkout @ checkout.stripe.com)
-        Strategy B: Stripe Elements iframe — resize + mouse.click + keyboard.press từng ký tự
-                    (Firefox block cross-origin frame access → không dùng frame.locator/query_selector)
-        """
-        import time as _t3
-        for attempt in range(retries):
-            # ── Strategy A: Input trực tiếp trên main page ──────────────────
-            for sel in selectors:
-                try:
-                    el = page.query_selector(sel)
-                    if not el or not el.is_visible():
-                        continue
-                    el.click()
-                    _t3.sleep(0.3)
-                    page.keyboard.press("Control+a")
-                    _t3.sleep(0.1)
-                    page.keyboard.press("Backspace")
-                    _t3.sleep(0.1)
-                    for ch in value:
-                        page.keyboard.press(ch)
-                        _t3.sleep(0.05 + _rnd.uniform(0, 0.03))
-                    _t3.sleep(0.3)
-                    val = ""
-                    try: val = el.input_value() or ""
-                    except Exception: val = ""
-                    # VERIFY THẬT: so số chữ số (không báo thành công giả)
-                    _exp_d = "".join(c for c in value if c.isdigit())
-                    _got_d = "".join(c for c in val if c.isdigit())
-                    if _exp_d and (_got_d == _exp_d or _got_d.endswith(_exp_d)):
-                        log(f"✓ {label} VERIFY OK (main [{sel[:30]}] {val})")
-                        return True
-                    log(f"✗ {label} điền hụt (main [{sel[:30]}] got='{val}') — thử cách khác")
-                    continue
-                except Exception:
-                    continue
-            # ── Strategy B: Stripe Elements iframe — mouse click + keyboard ─
-            # Resize iframe để Playwright coi là visible, rồi click vào đúng tọa độ
-            try:
-                page.evaluate("""
-                    () => {
-                        const ifr = document.querySelector(
-                            'iframe[title*="card" i], iframe[title*="payment" i], iframe[title*="Secure" i]'
-                        );
-                        if (ifr) {
-                            ifr.style.setProperty('height', '100px', 'important');
-                            ifr.style.setProperty('min-height', '80px', 'important');
-                        }
-                    }
-                """)
-            except Exception:
-                pass
-            _t3.sleep(0.3)
-            # Tìm iframe element
-            card_ifr = None
-            for sel_ifr in [
-                'iframe[title*="card" i]',
-                'iframe[title*="payment" i]',
-                'iframe[title*="Secure" i]',
-                'iframe[name*="privateStripeFrame"]',
-            ]:
-                try:
-                    card_ifr = page.query_selector(sel_ifr)
-                    if card_ifr:
-                        break
-                except Exception:
-                    pass
-            if card_ifr:
-                try:
-                    bb = card_ifr.bounding_box()
-                    if bb and bb['width'] > 10:
-                        cx = bb['x'] + bb['width'] * 0.1
-                        cy = bb['y'] + bb['height'] / 2
-                        page.mouse.click(cx, cy)
-                        _t3.sleep(0.4)
-                        for ch in value:
-                            page.keyboard.press(ch)
-                            _t3.sleep(0.06 + _rnd.uniform(0, 0.04))
-                        _t3.sleep(0.3)
-                        log(f"✓ {label} OK (iframe mouse+key, x={cx:.0f})")
-                        return True
-                except Exception as _be:
-                    log(f"  iframe click err: {_be}")
-            if attempt < retries - 1:
-                log(f"⏳ {label} chưa thấy, chờ 3s (attempt {attempt+1}/{retries})...")
-                page.wait_for_timeout(3000)
-        log(f"⚠ {label}: không điền được sau {retries} lần thử")
-        return False
-
-    def wait_navigation(page, expected_patterns=None, timeout=20000):
-        """Chờ URL thay đổi hoặc pattern khớp."""
-        try:
-            if expected_patterns:
-                for pat in expected_patterns:
-                    try:
-                        page.wait_for_url(pat, timeout=timeout)
-                        return True
-                    except Exception:
-                        continue
-            else:
-                page.wait_for_load_state("networkidle", timeout=timeout)
-            return True
-        except Exception:
-            return False
-
-    def proxy_precheck(proxy_url):
-        """Ping nhanh proxy trước khi dùng — timeout 8s."""
-        if not proxy_url:
-            return True, None  # không có proxy thì skip
-        proxies_cfg = {"http": proxy_url, "https": proxy_url}
-        try:
-            t0 = _time.time()
-            r = _req.get("https://ipinfo.io/ip", proxies=proxies_cfg, timeout=8)
-            ms = int((_time.time() - t0) * 1000)
-            ip = r.text.strip()
-            return True, f"{ip} ({ms}ms)"
-        except Exception as e:
-            return False, str(e)
-
-    try:
-        from invisible_playwright import InvisiblePlaywright
-
-        # ── Setup proxy từ profile hoặc pool ────────────────────────────────
-        kwargs: dict = {}
-        _proxy_url = None
-
-        _proxy_src  = profile.get("proxy_server")
-        _proxy_user = profile.get("proxy_username", "")
-        _proxy_pass = profile.get("proxy_password", "")
-
-        if not _proxy_src:
-            _ws_px = pick_next_proxy()
-            if _ws_px:
-                _proxy_src  = _ws_px["server"]
-                _proxy_user = _ws_px.get("username", "")
-                _proxy_pass = _ws_px.get("password", "")
-                log(f"[Auto] Proxy pool: {_ws_px['host']}:{_ws_px['port']}")
-
-        if _proxy_src:
-            if _proxy_user:
-                # socks5://user:pass@host:port
-                base = _proxy_src.split("://",1)[-1]
-                _proxy_url = f"socks5://{_proxy_user}:{_proxy_pass}@{base}"
-            else:
-                _proxy_url = _proxy_src
-
-            # ── Pre-check proxy ──────────────────────────────────────────────
-            log(f"⏱ Kiểm tra proxy: {_proxy_src} ...")
-            ok, info = proxy_precheck(_proxy_url)
-            if ok:
-                log(f"✅ Proxy OK — IP: {info}")
-            else:
-                log(f"⚠ Proxy yếu/dead: {info} — tiếp tục nhưng có thể chậm")
-
-            proxy = {"server": _proxy_src}
-            if _proxy_user: proxy["username"] = _proxy_user
-            if _proxy_pass: proxy["password"] = _proxy_pass
-            kwargs["proxy"] = proxy
-
-        if profile.get("seed") is not None:
-            kwargs["seed"] = int(profile["seed"])
-        if profile.get("timezone"):
-            kwargs["timezone"] = profile["timezone"]
-
-        total = len(rows)
-        log(f"Bắt đầu — {total} hàng")
-        running_tasks[tid]["total"] = total
-        running_tasks[tid]["done"]  = 0
-
-        for idx, row in enumerate(rows):
-            if not alive():
-                log("⛔ Task bị dừng.")
-                break
-
-            email           = row.get("email","").strip() or _random_email()
-            password        = row.get("password","").strip() or _random_password(12)
-            card_number     = row.get("card_number","").strip().replace(" ","")
-            exp_month       = row.get("exp_month","").strip().zfill(2)
-            exp_year        = row.get("exp_year","").strip()
-            cvv             = row.get("cvv","").strip()
-            cardholder_name = row.get("cardholder_name","").strip()
-            zip_code        = row.get("zip","").strip()
-            exp_year_2      = exp_year[-2:] if len(exp_year) >= 2 else exp_year
-            exp_mmyy        = f"{exp_month}{exp_year_2}"
-
-            log(f"─── [{idx+1}/{total}] {email} ───")
-
-            try:
-                ip_client = InvisiblePlaywright(**kwargs)
-                with ip_client as browser:
-                    page = browser.new_page()
-
-                    # ── STEP 1: Mở trang ──────────────────────────────────────
-                    log(f"[{idx+1}] Mở simen.ai ...")
-                    page.goto("https://simen.ai/", wait_until="domcontentloaded", timeout=40000)
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                    log(f"[{idx+1}] URL: {page.url[:70]}")
-
-                    # ── STEP 2: Click Try for $1 ──────────────────────────────
-                    log(f"[{idx+1}] Tìm nút $1 trial ...")
-                    trial_clicked = smart_click(page, [
-                        "text=Try for $1",
-                        "text=Start your $1 trial",
-                        "button:has-text('$1')",
-                        "a:has-text('Try for $1')",
-                        "a:has-text('Get Started')",
-                        "button:has-text('Get Started')",
-                    ], label="Trial button", timeout=10000)
-                    if not trial_clicked:
-                        log(f"[{idx+1}] ⚠ Không thấy nút trial — thử vào /signup trực tiếp")
-                        page.goto("https://simen.ai/signup", wait_until="domcontentloaded", timeout=30000)
-                    page.wait_for_timeout(800)
-
-                    # ── STEP 3: Điền email ────────────────────────────────────
-                    log(f"[{idx+1}] Điền email ...")
-                    email_ok = smart_fill(page, [
-                        "input[type='email']",
-                        "input[name='email']",
-                        "input[placeholder*='email' i]",
-                        "input[autocomplete='email']",
-                    ], email, label="Email", timeout=10000)
-                    if not email_ok:
-                        raise Exception("Không tìm được email input")
-                    page.wait_for_timeout(300)
-
-                    # ── STEP 4: Click Continue ────────────────────────────────
-                    log(f"[{idx+1}] Click Continue ...")
-                    # BUG2 FIX: tránh match "Continue with Link" (Stripe Link overlay)
-                    smart_click(page, [
-                        "button:has-text('Continue'):not(:has-text('with'))",
-                        "button:has-text('Continue'):not(:has-text('Link'))",
-                        "button:has-text('Next')",
-                        "button[type='submit']:not([disabled])",
-                    ], label="Continue", timeout=6000)
-                    page.wait_for_timeout(1500)
-
-                    # ── STEP 5: Password ──────────────────────────────────────
-                    # Có thể đã có 2 field pw (pw + confirm), điền cả 2
-                    log(f"[{idx+1}] Điền password ...")
-                    pw_fields = page.locator("input[type='password']").all()
-                    if len(pw_fields) == 0:
-                        # chờ thêm
-                        page.wait_for_selector("input[type='password']", timeout=8000)
-                        pw_fields = page.locator("input[type='password']").all()
-                    for i, pw_el in enumerate(pw_fields[:2]):
-                        try:
-                            pw_el.wait_for(state="visible", timeout=5000)
-                            pw_el.click()
-                            pw_el.press("Control+a")
-                            page.wait_for_timeout(80)
-                            for ch in password:
-                                pw_el.press_sequentially(ch, delay=55 + _rnd.randint(0, 30))
-                            log(f"[{idx+1}] ✓ Password field {i+1} điền xong")
-                        except Exception:
-                            pass
-                    page.wait_for_timeout(300)
-
-                    # ── STEP 6: Click Create account / Sign up ────────────────
-                    log(f"[{idx+1}] Click Create account ...")
-                    smart_click(page, [
-                        "button:has-text('Create account')",
-                        "button:has-text('Create Account')",
-                        "button:has-text('Sign up')",
-                        "button:has-text('Sign Up')",
-                        "button[type='submit']:not([disabled])",
-                    ], label="Create account", timeout=6000)
-
-                    # Chờ redirect sau signup
-                    log(f"[{idx+1}] ⏳ Chờ account tạo xong ...")
-                    wait_navigation(page, [
-                        "**/dashboard**", "**/pricing**", "**/app**", "**/home**"
-                    ], timeout=20000)
-                    log(f"[{idx+1}] URL sau signup: {page.url[:70]}")
-
-                    # ── STEP 7: Pricing → Lite ────────────────────────────────
-                    cur = page.url
-                    if "pricing" not in cur:
-                        log(f"[{idx+1}] → /pricing ...")
-                        page.goto("https://simen.ai/pricing", wait_until="domcontentloaded", timeout=30000)
-                        page.wait_for_load_state("networkidle", timeout=10000)
-
-                    log(f"[{idx+1}] Chọn Lite plan ...")
-                    lite_clicked = smart_click(page, [
-                        "button:has-text('Start with Lite')",
-                        "button:has-text('Chọn Lite')",
-                        "button:has-text('Get Lite')",
-                        "button:has-text('Choose Lite')",
-                        "button:has-text('Try Lite')",
-                    ], label="Lite plan", timeout=8000)
-                    if not lite_clicked:
-                        # fallback: click nút "Start" đầu tiên (thường là Lite = rẻ nhất)
-                        try:
-                            first_btn = page.locator("button:has-text('Start')").first
-                            first_btn.wait_for(state="visible", timeout=5000)
-                            first_btn.click()
-                            lite_clicked = True
-                            log(f"[{idx+1}] ✓ Lite fallback: first Start button")
-                        except Exception:
-                            pass
-                    if not lite_clicked:
-                        raise Exception("Không tìm được Lite plan button")
-
-                    # Chờ redirect tới Stripe checkout
-                    log(f"[{idx+1}] ⏳ Chờ Stripe checkout ...")
-                    wait_navigation(page, [
-                        "**/checkout.stripe.com/**",
-                        "**/checkout**",
-                        "**stripe**",
-                        "**/payment**",
-                    ], timeout=25000)
-                    log(f"[{idx+1}] URL checkout: {page.url[:80]}")
-
-                    # ── STEP 8: Stripe card ───────────────────────────────────
-                    if not card_number:
-                        log(f"[{idx+1}] ⚠ Không có card — dừng tại checkout")
-                    else:
-                        log(f"[{idx+1}] 💳 Điền card ...")
-                        # Đợi Stripe render xong (proxy chậm cần thêm thời gian)
-                        page.wait_for_load_state("networkidle", timeout=20000)
-                        page.wait_for_timeout(3000)
-
-                        # Log frames để debug
-                        frame_urls = [f.url[:60] for f in page.frames if f.url]
-                        log(f"[{idx+1}] Frames ({len(frame_urls)}): {frame_urls}")
-
-                        # Log inputs main page
-                        main_inputs = page.query_selector_all('input')
-                        inp_info = []
-                        for _inp in main_inputs[:10]:
-                            inp_info.append(f"name={_inp.get_attribute('name') or ''} "
-                                            f"type={_inp.get_attribute('type') or ''} "
-                                            f"ph={(_inp.get_attribute('placeholder') or '')[:20]}")
-                        log(f"[{idx+1}] Main inputs ({len(main_inputs)}): {inp_info}")
-
-                        # ── Detect loại Stripe checkout ──────────────────────
-                        # checkout.stripe.com: inputs trên main page
-                        # Stripe Elements embedded: iframes cross-origin
-                        _cur_url = page.url
-                        _is_hosted = "checkout.stripe.com" in _cur_url or "buy.stripe.com" in _cur_url
-
-                        if _is_hosted:
-                            log(f"[{idx+1}] → Stripe Hosted Checkout (main page inputs)")
-                        else:
-                            log(f"[{idx+1}] → Stripe Elements embedded (iframe approach)")
-
-                        # ── Card selectors cho Hosted Checkout ───────────────
-                        card_sel_hosted = [
-                            'input[name="cardNumber"]',
-                            'input[autocomplete="cc-number"]',
-                            'input[autocomplete*="cc-number"]',
-                            'input[placeholder*="1234"]',
-                            'input[placeholder*="Card number" i]',
-                        ]
-                        exp_sel_hosted = [
-                            'input[name="cardExpiry"]',
-                            'input[autocomplete="cc-exp"]',
-                            'input[autocomplete*="cc-exp"]',
-                            'input[placeholder*="MM / YY" i]',
-                            'input[placeholder*="MM/YY" i]',
-                        ]
-                        cvc_sel_hosted = [
-                            'input[name="cardCvc"]',
-                            'input[autocomplete="cc-csc"]',
-                            'input[autocomplete*="cc-csc"]',
-                            'input[placeholder*="CVC" i]',
-                            'input[placeholder*="CVV" i]',
-                        ]
-
-                        card_ok = exp_ok = cvc_ok = False
-
-                        if _is_hosted:
-                            # Hosted: điền từng field riêng lẻ
-                            card_ok = frame_fill(page, card_sel_hosted, card_number, "Card number", retries=3)
-                            page.wait_for_timeout(300)
-                            exp_ok  = frame_fill(page, exp_sel_hosted, exp_mmyy, "Expiry", retries=3)
-                            page.wait_for_timeout(300)
-                            cvc_ok  = frame_fill(page, cvc_sel_hosted, cvv, "CVC", retries=3)
-                        else:
-                            # Stripe Elements embedded: 1 iframe duy nhất, auto-advance giữa fields
-                            # Resize iframe + click card number + type tất cả liên tục
-                            import time as _t_card
-                            _stripe_ok = False
-                            for _attempt in range(4):
-                                try:
-                                    # Resize iframe
-                                    page.evaluate("""
-                                        () => {
-                                            const ifr = document.querySelector(
-                                                'iframe[title*="card" i], iframe[title*="payment" i], iframe[title*="Secure" i]'
-                                            );
-                                            if (ifr) {
-                                                ifr.style.setProperty('height', '100px', 'important');
-                                                ifr.style.setProperty('min-height', '80px', 'important');
-                                            }
-                                        }
-                                    """)
-                                    _t_card.sleep(0.4)
-
-                                    _card_ifr = None
-                                    for _sel_ifr in [
-                                        'iframe[title*="card" i]',
-                                        'iframe[title*="payment" i]',
-                                        'iframe[title*="Secure" i]',
-                                        'iframe[name*="privateStripeFrame"]',
-                                    ]:
-                                        _card_ifr = page.query_selector(_sel_ifr)
-                                        if _card_ifr:
-                                            break
-
-                                    if not _card_ifr:
-                                        log(f"[{idx+1}] ⏳ Chưa thấy Stripe iframe, chờ 3s ({_attempt+1}/4)...")
-                                        page.wait_for_timeout(3000)
-                                        continue
-
-                                    _bb = _card_ifr.bounding_box()
-                                    if not _bb or _bb['width'] < 10:
-                                        log(f"[{idx+1}] iframe bbox invalid: {_bb}, chờ 3s...")
-                                        page.wait_for_timeout(3000)
-                                        continue
-
-                                    log(f"[{idx+1}] iframe bbox: {_bb}")
-
-                                    # Click vào vùng card number (x=10%)
-                                    _cx = _bb['x'] + _bb['width'] * 0.1
-                                    _cy = _bb['y'] + _bb['height'] / 2
-                                    page.mouse.click(_cx, _cy)
-                                    _t_card.sleep(0.5)
-
-                                    # Type card number
-                                    for _ch in card_number:
-                                        page.keyboard.press(_ch)
-                                        _t_card.sleep(0.06 + _rnd.uniform(0, 0.04))
-                                    _t_card.sleep(0.5)
-                                    # Stripe auto-advance → exp field
-                                    for _ch in exp_mmyy:
-                                        page.keyboard.press(_ch)
-                                        _t_card.sleep(0.06 + _rnd.uniform(0, 0.04))
-                                    _t_card.sleep(0.5)
-                                    # Stripe auto-advance → CVC field
-                                    for _ch in cvv:
-                                        page.keyboard.press(_ch)
-                                        _t_card.sleep(0.06 + _rnd.uniform(0, 0.04))
-                                    _t_card.sleep(0.3)
-
-                                    log(f"[{idx+1}] ✓ Stripe Elements: card+exp+cvc điền xong")
-                                    card_ok = exp_ok = cvc_ok = _stripe_ok = True
-                                    break
-                                except Exception as _ce:
-                                    log(f"[{idx+1}] Elements fill err ({_attempt+1}): {_ce}")
-                                    page.wait_for_timeout(2000)
-
-                            if not _stripe_ok:
-                                # Fallback: thử từng field riêng qua frame_fill
-                                log(f"[{idx+1}] Fallback: thử frame_fill từng field...")
-                                card_ok = frame_fill(page, card_sel_hosted + [
-                                    'input[name="cardnumber"]',
-                                ], card_number, "Card number", retries=2)
-                                page.wait_for_timeout(300)
-                                exp_ok = frame_fill(page, exp_sel_hosted + [
-                                    'input[name="exp-date"]',
-                                ], exp_mmyy, "Expiry", retries=2)
-                                page.wait_for_timeout(300)
-                                cvc_ok = frame_fill(page, cvc_sel_hosted + [
-                                    'input[name="cvc"]',
-                                ], cvv, "CVC", retries=2)
-
-                        log(f"[{idx+1}] Card fill: card={card_ok} exp={exp_ok} cvc={cvc_ok}")
-                        page.wait_for_timeout(300)
-
-                        # Cardholder name
-                        if cardholder_name:
-                            smart_fill(page, [
-                                'input[name="billingName"]',
-                                'input[autocomplete*="cc-name"]',
-                                'input[placeholder*="Name on card" i]',
-                                'input[placeholder*="Cardholder" i]',
-                            ], cardholder_name, label="Cardholder name", timeout=3000)
-                            page.wait_for_timeout(200)
-
-                        # ZIP
-                        if zip_code:
-                            smart_fill(page, [
-                                'input[name="postalCode"]',
-                                'input[autocomplete*="postal-code"]',
-                                'input[placeholder*="ZIP" i]',
-                            ], zip_code, label="ZIP", timeout=3000)
-                            page.wait_for_timeout(200)
-
-                        # Phone (Stripe Link popup)
-                        _area_codes = ['201','212','213','312','404','415','512','617','702','917']
-                        _phone = f"({_rnd.choice(_area_codes)}) {_rnd.randint(200,999)}-{_rnd.randint(1000,9999)}"
-                        try:
-                            for frame in page.frames:
-                                inp = frame.locator('input[name="phoneNumber"], input[type="tel"]').first
-                                try:
-                                    inp.wait_for(state="visible", timeout=2000)
-                                    inp.click()
-                                    for ch in _phone:
-                                        inp.press_sequentially(ch, delay=55)
-                                    log(f"[{idx+1}] Phone: {_phone}")
-                                    break
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-
-                        page.wait_for_timeout(800)
-
-                        # ── Click Pay ──────────────────────────────────────────
-                        log(f"[{idx+1}] 🖱 Click Pay ...")
-                        pay_clicked = smart_click(page, [
-                            '[data-testid="hosted-payment-submit-button"]',
-                            'button:has-text("Pay")',
-                            'button:has-text("Subscribe")',
-                            'button:has-text("Start trial")',
-                            'button:has-text("Start Trial")',
-                            'button:has-text("Confirm")',
-                            'button[type="submit"]',
-                        ], label="Pay button", timeout=8000)
-
-                        if not pay_clicked:
-                            log(f"[{idx+1}] ⚠ Không tìm được Pay button — thử JS click")
-                            try:
-                                result = page.evaluate("""
-                                    () => {
-                                        const btn = [...document.querySelectorAll('button')].find(b =>
-                                            /pay|subscribe|start trial|confirm/i.test(b.textContent)
-                                        );
-                                        if(btn && !btn.disabled){ btn.click(); return btn.textContent.trim(); }
-                                        return null;
-                                    }
-                                """)
-                                if result:
-                                    log(f"[{idx+1}] ✓ JS click: '{result}'")
-                                    pay_clicked = True
-                            except Exception:
-                                pass
-
-                        # Chờ kết quả payment
-                        log(f"[{idx+1}] ⏳ Chờ kết quả payment ...")
-                        success = wait_navigation(page, [
-                            "**/dashboard**", "**/success**", "**/thank**", "**/home**"
-                        ], timeout=25000)
-
-                        final_url = page.url
-                        if any(x in final_url for x in ["dashboard","success","thank","home"]):
-                            log(f"[{idx+1}] ✅ THÀNH CÔNG — {final_url[:80]}")
-                            running_tasks[tid]["results"].append({
-                                "email": email, "status": "success", "url": final_url
-                            })
-                        else:
-                            log(f"[{idx+1}] ℹ URL sau pay: {final_url[:80]}")
-                            running_tasks[tid]["results"].append({
-                                "email": email, "status": "unknown", "url": final_url
-                            })
-
-                    running_tasks[tid]["done"] = idx + 1
-                    log(f"[{idx+1}] ✓ Xong")
-
-            except Exception as e:
-                import traceback
-                tb = traceback.format_exc()
-                log(f"[{idx+1}] ❌ Lỗi: {e}")
-                log(f"[{idx+1}] Traceback: {tb[-300:]}")
-                running_tasks[tid]["done"] = idx + 1
-                running_tasks[tid]["results"].append({
-                    "email": email if 'email' in dir() else "?", "status": "error", "error": str(e)
-                })
-
-    except Exception as e:
-        import traceback
-        push_task_log(tid, f"❌ Lỗi khởi tạo: {e}\n{traceback.format_exc()[-300:]}")
-
-    finally:
-        if tid in running_tasks:
-            running_tasks[tid]["alive"] = False
-            running_tasks[tid]["status"] = "done"
-        push_task_log(tid, "🏁 Script hoàn tất.")
-
-
-SCRIPT_RUNNERS = {
-    "dropaudit_signup": _run_dropaudit_signup,
-    "simen_trial": _run_simen_trial,
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
-# QUEUE — data rows chờ chạy
-# ══════════════════════════════════════════════════════════════════════════════
 _queue_lock = threading.Lock()
 _data_queue: list[dict] = []   # [{...row, _idx, _status: pending/running/done/failed}]
 _QUEUE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queue.json")
@@ -6033,19 +5430,37 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             page.locator("text=Get Started").first.click()
                         except Exception:
                             pass
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(2000)
 
-                    # ── STEP 3: Điền email vào popup modal ───────────────────
-                    log(f"[{idx+1}] Điền email vào popup ...")
-                    # Debug: log URL + tất cả input hiện có
+                    # ── STEP 3: Tìm email input (popup modal hoặc navigate sang /signup) ─
+                    log(f"[{idx+1}] Chờ email input xuất hiện ...")
                     _cur_url = page.url
-                    log(f"[{idx+1}] DEBUG URL sau click: {_cur_url}")
+                    log(f"[{idx+1}] URL sau click: {_cur_url}")
+                    if "signup" in _cur_url or "register" in _cur_url or "login" in _cur_url or "signin" in _cur_url:
+                        log(f"[{idx+1}] → Đã navigate sang auth page")
+                        page.wait_for_timeout(2000)
+                    else:
+                        # Chờ popup modal hoặc navigation (tối đa 12s)
+                        for _wi in range(12):
+                            _u2 = page.url
+                            if "signup" in _u2 or "register" in _u2 or "login" in _u2 or "signin" in _u2:
+                                log(f"[{idx+1}] → Navigate: {_u2[:60]}")
+                                page.wait_for_timeout(1500)
+                                break
+                            try:
+                                _chk = page.locator("input[type='email'], input[name='email'], input[placeholder*='email' i]").first
+                                _chk.wait_for(state="visible", timeout=1000)
+                                log(f"[{idx+1}] → Email input visible (popup)")
+                                break
+                            except Exception:
+                                pass
+                            page.wait_for_timeout(1000)
+                    # Debug dump
                     try:
                         _all_inputs = page.evaluate("""() => {
                             return Array.from(document.querySelectorAll('input')).map(e => ({
                                 type: e.type, name: e.name, placeholder: e.placeholder,
-                                id: e.id, className: e.className.substring(0,60),
-                                visible: e.offsetWidth > 0 && e.offsetHeight > 0
+                                id: e.id, visible: e.offsetWidth > 0 && e.offsetHeight > 0
                             }));
                         }""")
                         log(f"[{idx+1}] DEBUG inputs: {_all_inputs}")
@@ -6057,12 +5472,12 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         "input[name='email']",
                         "input[placeholder*='email' i]",
                         "input[placeholder*='name@example' i]",
+                        "input[autocomplete='email']",
                         "input[type='text']",
-                        "input:not([type='hidden'])",
                     ]:
                         try:
                             _el = page.locator(_esel).first
-                            _el.wait_for(state="visible", timeout=10000)
+                            _el.wait_for(state="visible", timeout=5000)
                             _el.triple_click()
                             _el.type(email, delay=60)
                             _email_ok = True
@@ -6071,7 +5486,18 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         except Exception:
                             pass
                     if not _email_ok:
-                        raise Exception("Không tìm được email input trong popup")
+                        log(f"[{idx+1}] ⚠ Không thấy email input — thử /signup trực tiếp")
+                        try:
+                            page.goto("https://simen.ai/signup", wait_until="domcontentloaded", timeout=20000)
+                            page.wait_for_timeout(2000)
+                            _el2 = page.locator("input[type='email'], input[name='email'], input[placeholder*='email' i]").first
+                            _el2.wait_for(state="visible", timeout=8000)
+                            _el2.triple_click()
+                            _el2.type(email, delay=60)
+                            _email_ok = True
+                            log(f"[{idx+1}] ✓ Email điền xong (qua /signup fallback)")
+                        except Exception as _fe:
+                            raise Exception(f"Không tìm được email input: {_fe}")
 
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
@@ -6422,646 +5848,6 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
             running_tasks[tid]["alive"] = False
             running_tasks[tid]["status"] = "done"
         push_task_log(tid, "🏁 Script hoàn tất.")
-
-
-    def log(msg):
-        push_task_log(tid, msg)
-
-    def alive():
-        return running_tasks.get(tid, {}).get("alive", False)
-
-    def smart_click(page, selectors, label="button", timeout=12000):
-        """Thử nhiều selector, chờ visible + enabled rồi click."""
-        for sel in selectors:
-            try:
-                el = page.locator(sel).first
-                el.wait_for(state="visible", timeout=timeout)
-                el.scroll_into_view_if_needed()
-                page.wait_for_timeout(200 + _rnd.randint(0, 200))
-                el.click()
-                log(f"✓ {label}: {sel[:60]}")
-                return True
-            except Exception:
-                continue
-        return False
-
-    def smart_fill(page, selectors, value, label="input", timeout=10000):
-        """Điền input thông minh: chờ visible, clear, type từng ký tự."""
-        for sel in selectors:
-            try:
-                el = page.locator(sel).first
-                el.wait_for(state="visible", timeout=timeout)
-                el.click()
-                page.wait_for_timeout(150)
-                el.select_text()
-                page.wait_for_timeout(100)
-                el.press("Control+a")
-                el.press("Backspace")
-                page.wait_for_timeout(100)
-                for ch in value:
-                    el.press_sequentially(ch, delay=50 + _rnd.randint(0, 40))
-                log(f"✓ {label} điền xong")
-                return True
-            except Exception:
-                continue
-        return False
-
-    def frame_fill(page, selectors, value, label="card input", retries=5):
-        """Điền input — tương thích Firefox cross-origin Stripe iframes.
-        
-        Strategy A: Main page inputs (Stripe Hosted Checkout @ checkout.stripe.com)
-        Strategy B: Stripe Elements iframe — resize + mouse.click + keyboard.press từng ký tự
-                    (Firefox block cross-origin frame access → không dùng frame.locator/query_selector)
-        """
-        import time as _t3
-        for attempt in range(retries):
-            # ── Strategy A: Input trực tiếp trên main page ──────────────────
-            for sel in selectors:
-                try:
-                    el = page.query_selector(sel)
-                    if not el or not el.is_visible():
-                        continue
-                    el.click()
-                    _t3.sleep(0.3)
-                    page.keyboard.press("Control+a")
-                    _t3.sleep(0.1)
-                    page.keyboard.press("Backspace")
-                    _t3.sleep(0.1)
-                    for ch in value:
-                        page.keyboard.press(ch)
-                        _t3.sleep(0.05 + _rnd.uniform(0, 0.03))
-                    _t3.sleep(0.3)
-                    val = ""
-                    try: val = el.input_value() or ""
-                    except Exception: val = ""
-                    # VERIFY THẬT: so số chữ số (không báo thành công giả)
-                    _exp_d = "".join(c for c in value if c.isdigit())
-                    _got_d = "".join(c for c in val if c.isdigit())
-                    if _exp_d and (_got_d == _exp_d or _got_d.endswith(_exp_d)):
-                        log(f"✓ {label} VERIFY OK (main [{sel[:30]}] {val})")
-                        return True
-                    log(f"✗ {label} điền hụt (main [{sel[:30]}] got='{val}') — thử cách khác")
-                    continue
-                except Exception:
-                    continue
-            # ── Strategy B: Stripe Elements iframe — mouse click + keyboard ─
-            # Resize iframe để Playwright coi là visible, rồi click vào đúng tọa độ
-            try:
-                page.evaluate("""
-                    () => {
-                        const ifr = document.querySelector(
-                            'iframe[title*="card" i], iframe[title*="payment" i], iframe[title*="Secure" i]'
-                        );
-                        if (ifr) {
-                            ifr.style.setProperty('height', '100px', 'important');
-                            ifr.style.setProperty('min-height', '80px', 'important');
-                        }
-                    }
-                """)
-            except Exception:
-                pass
-            _t3.sleep(0.3)
-            # Tìm iframe element
-            card_ifr = None
-            for sel_ifr in [
-                'iframe[title*="card" i]',
-                'iframe[title*="payment" i]',
-                'iframe[title*="Secure" i]',
-                'iframe[name*="privateStripeFrame"]',
-            ]:
-                try:
-                    card_ifr = page.query_selector(sel_ifr)
-                    if card_ifr:
-                        break
-                except Exception:
-                    pass
-            if card_ifr:
-                try:
-                    bb = card_ifr.bounding_box()
-                    if bb and bb['width'] > 10:
-                        cx = bb['x'] + bb['width'] * 0.1
-                        cy = bb['y'] + bb['height'] / 2
-                        page.mouse.click(cx, cy)
-                        _t3.sleep(0.4)
-                        for ch in value:
-                            page.keyboard.press(ch)
-                            _t3.sleep(0.06 + _rnd.uniform(0, 0.04))
-                        _t3.sleep(0.3)
-                        log(f"✓ {label} OK (iframe mouse+key, x={cx:.0f})")
-                        return True
-                except Exception as _be:
-                    log(f"  iframe click err: {_be}")
-            if attempt < retries - 1:
-                log(f"⏳ {label} chưa thấy, chờ 3s (attempt {attempt+1}/{retries})...")
-                page.wait_for_timeout(3000)
-        log(f"⚠ {label}: không điền được sau {retries} lần thử")
-        return False
-
-    def wait_navigation(page, expected_patterns=None, timeout=20000):
-        """Chờ URL thay đổi hoặc pattern khớp."""
-        try:
-            if expected_patterns:
-                for pat in expected_patterns:
-                    try:
-                        page.wait_for_url(pat, timeout=timeout)
-                        return True
-                    except Exception:
-                        continue
-            else:
-                page.wait_for_load_state("networkidle", timeout=timeout)
-            return True
-        except Exception:
-            return False
-
-    def proxy_precheck(proxy_url):
-        """Ping nhanh proxy trước khi dùng — timeout 8s."""
-        if not proxy_url:
-            return True, None  # không có proxy thì skip
-        proxies_cfg = {"http": proxy_url, "https": proxy_url}
-        try:
-            t0 = _time.time()
-            r = _req.get("https://ipinfo.io/ip", proxies=proxies_cfg, timeout=8)
-            ms = int((_time.time() - t0) * 1000)
-            ip = r.text.strip()
-            return True, f"{ip} ({ms}ms)"
-        except Exception as e:
-            return False, str(e)
-
-    try:
-        from invisible_playwright import InvisiblePlaywright
-
-        # ── Setup proxy từ profile hoặc pool ────────────────────────────────
-        kwargs: dict = {}
-        _proxy_url = None
-
-        _proxy_src  = profile.get("proxy_server")
-        _proxy_user = profile.get("proxy_username", "")
-        _proxy_pass = profile.get("proxy_password", "")
-
-        if not _proxy_src:
-            _ws_px = pick_next_proxy()
-            if _ws_px:
-                _proxy_src  = _ws_px["server"]
-                _proxy_user = _ws_px.get("username", "")
-                _proxy_pass = _ws_px.get("password", "")
-                log(f"[Auto] Proxy pool: {_ws_px['host']}:{_ws_px['port']}")
-
-        if _proxy_src:
-            if _proxy_user:
-                # socks5://user:pass@host:port
-                base = _proxy_src.split("://",1)[-1]
-                _proxy_url = f"socks5://{_proxy_user}:{_proxy_pass}@{base}"
-            else:
-                _proxy_url = _proxy_src
-
-            # ── Pre-check proxy ──────────────────────────────────────────────
-            log(f"⏱ Kiểm tra proxy: {_proxy_src} ...")
-            ok, info = proxy_precheck(_proxy_url)
-            if ok:
-                log(f"✅ Proxy OK — IP: {info}")
-            else:
-                log(f"⚠ Proxy yếu/dead: {info} — tiếp tục nhưng có thể chậm")
-
-            proxy = {"server": _proxy_src}
-            if _proxy_user: proxy["username"] = _proxy_user
-            if _proxy_pass: proxy["password"] = _proxy_pass
-            kwargs["proxy"] = proxy
-
-        if profile.get("seed") is not None:
-            kwargs["seed"] = int(profile["seed"])
-        if profile.get("timezone"):
-            kwargs["timezone"] = profile["timezone"]
-
-        total = len(rows)
-        log(f"Bắt đầu — {total} hàng")
-        running_tasks[tid]["total"] = total
-        running_tasks[tid]["done"]  = 0
-
-        for idx, row in enumerate(rows):
-            if not alive():
-                log("⛔ Task bị dừng.")
-                break
-
-            email           = row.get("email","").strip() or _random_email()
-            password        = row.get("password","").strip() or _random_password(12)
-            card_number     = row.get("card_number","").strip().replace(" ","")
-            exp_month       = row.get("exp_month","").strip().zfill(2)
-            exp_year        = row.get("exp_year","").strip()
-            cvv             = row.get("cvv","").strip()
-            cardholder_name = row.get("cardholder_name","").strip()
-            zip_code        = row.get("zip","").strip()
-            exp_year_2      = exp_year[-2:] if len(exp_year) >= 2 else exp_year
-            exp_mmyy        = f"{exp_month}{exp_year_2}"
-
-            log(f"─── [{idx+1}/{total}] {email} ───")
-
-            try:
-                ip_client = InvisiblePlaywright(**kwargs)
-                with ip_client as browser:
-                    page = browser.new_page()
-
-                    # ── STEP 1: Mở trang ──────────────────────────────────────
-                    log(f"[{idx+1}] Mở simen.ai ...")
-                    page.goto("https://simen.ai/", wait_until="domcontentloaded", timeout=40000)
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                    log(f"[{idx+1}] URL: {page.url[:70]}")
-
-                    # ── STEP 2: Click Try for $1 ──────────────────────────────
-                    log(f"[{idx+1}] Tìm nút $1 trial ...")
-                    trial_clicked = smart_click(page, [
-                        "text=Try for $1",
-                        "text=Start your $1 trial",
-                        "button:has-text('$1')",
-                        "a:has-text('Try for $1')",
-                        "a:has-text('Get Started')",
-                        "button:has-text('Get Started')",
-                    ], label="Trial button", timeout=10000)
-                    if not trial_clicked:
-                        log(f"[{idx+1}] ⚠ Không thấy nút trial — thử vào /signup trực tiếp")
-                        page.goto("https://simen.ai/signup", wait_until="domcontentloaded", timeout=30000)
-                    page.wait_for_timeout(800)
-
-                    # ── STEP 3: Điền email ────────────────────────────────────
-                    log(f"[{idx+1}] Điền email ...")
-                    email_ok = smart_fill(page, [
-                        "input[type='email']",
-                        "input[name='email']",
-                        "input[placeholder*='email' i]",
-                        "input[autocomplete='email']",
-                    ], email, label="Email", timeout=10000)
-                    if not email_ok:
-                        raise Exception("Không tìm được email input")
-                    page.wait_for_timeout(300)
-
-                    # ── STEP 4: Click Continue ────────────────────────────────
-                    log(f"[{idx+1}] Click Continue ...")
-                    # BUG2 FIX: tránh match "Continue with Link" (Stripe Link overlay)
-                    smart_click(page, [
-                        "button:has-text('Continue'):not(:has-text('with'))",
-                        "button:has-text('Continue'):not(:has-text('Link'))",
-                        "button:has-text('Next')",
-                        "button[type='submit']:not([disabled])",
-                    ], label="Continue", timeout=6000)
-                    page.wait_for_timeout(1500)
-
-                    # ── STEP 5: Password ──────────────────────────────────────
-                    # Có thể đã có 2 field pw (pw + confirm), điền cả 2
-                    log(f"[{idx+1}] Điền password ...")
-                    pw_fields = page.locator("input[type='password']").all()
-                    if len(pw_fields) == 0:
-                        # chờ thêm
-                        page.wait_for_selector("input[type='password']", timeout=8000)
-                        pw_fields = page.locator("input[type='password']").all()
-                    for i, pw_el in enumerate(pw_fields[:2]):
-                        try:
-                            pw_el.wait_for(state="visible", timeout=5000)
-                            pw_el.click()
-                            pw_el.press("Control+a")
-                            page.wait_for_timeout(80)
-                            for ch in password:
-                                pw_el.press_sequentially(ch, delay=55 + _rnd.randint(0, 30))
-                            log(f"[{idx+1}] ✓ Password field {i+1} điền xong")
-                        except Exception:
-                            pass
-                    page.wait_for_timeout(300)
-
-                    # ── STEP 6: Click Create account / Sign up ────────────────
-                    log(f"[{idx+1}] Click Create account ...")
-                    smart_click(page, [
-                        "button:has-text('Create account')",
-                        "button:has-text('Create Account')",
-                        "button:has-text('Sign up')",
-                        "button:has-text('Sign Up')",
-                        "button[type='submit']:not([disabled])",
-                    ], label="Create account", timeout=6000)
-
-                    # Chờ redirect sau signup
-                    log(f"[{idx+1}] ⏳ Chờ account tạo xong ...")
-                    wait_navigation(page, [
-                        "**/dashboard**", "**/pricing**", "**/app**", "**/home**"
-                    ], timeout=20000)
-                    log(f"[{idx+1}] URL sau signup: {page.url[:70]}")
-
-                    # ── STEP 7: Pricing → Lite ────────────────────────────────
-                    cur = page.url
-                    if "pricing" not in cur:
-                        log(f"[{idx+1}] → /pricing ...")
-                        page.goto("https://simen.ai/pricing", wait_until="domcontentloaded", timeout=30000)
-                        page.wait_for_load_state("networkidle", timeout=10000)
-
-                    log(f"[{idx+1}] Chọn Lite plan ...")
-                    lite_clicked = smart_click(page, [
-                        "button:has-text('Start with Lite')",
-                        "button:has-text('Chọn Lite')",
-                        "button:has-text('Get Lite')",
-                        "button:has-text('Choose Lite')",
-                        "button:has-text('Try Lite')",
-                    ], label="Lite plan", timeout=8000)
-                    if not lite_clicked:
-                        # fallback: click nút "Start" đầu tiên (thường là Lite = rẻ nhất)
-                        try:
-                            first_btn = page.locator("button:has-text('Start')").first
-                            first_btn.wait_for(state="visible", timeout=5000)
-                            first_btn.click()
-                            lite_clicked = True
-                            log(f"[{idx+1}] ✓ Lite fallback: first Start button")
-                        except Exception:
-                            pass
-                    if not lite_clicked:
-                        raise Exception("Không tìm được Lite plan button")
-
-                    # Chờ redirect tới Stripe checkout
-                    log(f"[{idx+1}] ⏳ Chờ Stripe checkout ...")
-                    wait_navigation(page, [
-                        "**/checkout.stripe.com/**",
-                        "**/checkout**",
-                        "**stripe**",
-                        "**/payment**",
-                    ], timeout=25000)
-                    log(f"[{idx+1}] URL checkout: {page.url[:80]}")
-
-                    # ── STEP 8: Stripe card ───────────────────────────────────
-                    if not card_number:
-                        log(f"[{idx+1}] ⚠ Không có card — dừng tại checkout")
-                    else:
-                        log(f"[{idx+1}] 💳 Điền card ...")
-                        # Đợi Stripe render xong (proxy chậm cần thêm thời gian)
-                        page.wait_for_load_state("networkidle", timeout=20000)
-                        page.wait_for_timeout(3000)
-
-                        # Log frames để debug
-                        frame_urls = [f.url[:60] for f in page.frames if f.url]
-                        log(f"[{idx+1}] Frames ({len(frame_urls)}): {frame_urls}")
-
-                        # Log inputs main page
-                        main_inputs = page.query_selector_all('input')
-                        inp_info = []
-                        for _inp in main_inputs[:10]:
-                            inp_info.append(f"name={_inp.get_attribute('name') or ''} "
-                                            f"type={_inp.get_attribute('type') or ''} "
-                                            f"ph={(_inp.get_attribute('placeholder') or '')[:20]}")
-                        log(f"[{idx+1}] Main inputs ({len(main_inputs)}): {inp_info}")
-
-                        # ── Detect loại Stripe checkout ──────────────────────
-                        # checkout.stripe.com: inputs trên main page
-                        # Stripe Elements embedded: iframes cross-origin
-                        _cur_url = page.url
-                        _is_hosted = "checkout.stripe.com" in _cur_url or "buy.stripe.com" in _cur_url
-
-                        if _is_hosted:
-                            log(f"[{idx+1}] → Stripe Hosted Checkout (main page inputs)")
-                        else:
-                            log(f"[{idx+1}] → Stripe Elements embedded (iframe approach)")
-
-                        # ── Card selectors cho Hosted Checkout ───────────────
-                        card_sel_hosted = [
-                            'input[name="cardNumber"]',
-                            'input[autocomplete="cc-number"]',
-                            'input[autocomplete*="cc-number"]',
-                            'input[placeholder*="1234"]',
-                            'input[placeholder*="Card number" i]',
-                        ]
-                        exp_sel_hosted = [
-                            'input[name="cardExpiry"]',
-                            'input[autocomplete="cc-exp"]',
-                            'input[autocomplete*="cc-exp"]',
-                            'input[placeholder*="MM / YY" i]',
-                            'input[placeholder*="MM/YY" i]',
-                        ]
-                        cvc_sel_hosted = [
-                            'input[name="cardCvc"]',
-                            'input[autocomplete="cc-csc"]',
-                            'input[autocomplete*="cc-csc"]',
-                            'input[placeholder*="CVC" i]',
-                            'input[placeholder*="CVV" i]',
-                        ]
-
-                        card_ok = exp_ok = cvc_ok = False
-
-                        if _is_hosted:
-                            # Hosted: điền từng field riêng lẻ
-                            card_ok = frame_fill(page, card_sel_hosted, card_number, "Card number", retries=3)
-                            page.wait_for_timeout(300)
-                            exp_ok  = frame_fill(page, exp_sel_hosted, exp_mmyy, "Expiry", retries=3)
-                            page.wait_for_timeout(300)
-                            cvc_ok  = frame_fill(page, cvc_sel_hosted, cvv, "CVC", retries=3)
-                        else:
-                            # Stripe Elements embedded: 1 iframe duy nhất, auto-advance giữa fields
-                            # Resize iframe + click card number + type tất cả liên tục
-                            import time as _t_card
-                            _stripe_ok = False
-                            for _attempt in range(4):
-                                try:
-                                    # Resize iframe
-                                    page.evaluate("""
-                                        () => {
-                                            const ifr = document.querySelector(
-                                                'iframe[title*="card" i], iframe[title*="payment" i], iframe[title*="Secure" i]'
-                                            );
-                                            if (ifr) {
-                                                ifr.style.setProperty('height', '100px', 'important');
-                                                ifr.style.setProperty('min-height', '80px', 'important');
-                                            }
-                                        }
-                                    """)
-                                    _t_card.sleep(0.4)
-
-                                    _card_ifr = None
-                                    for _sel_ifr in [
-                                        'iframe[title*="card" i]',
-                                        'iframe[title*="payment" i]',
-                                        'iframe[title*="Secure" i]',
-                                        'iframe[name*="privateStripeFrame"]',
-                                    ]:
-                                        _card_ifr = page.query_selector(_sel_ifr)
-                                        if _card_ifr:
-                                            break
-
-                                    if not _card_ifr:
-                                        log(f"[{idx+1}] ⏳ Chưa thấy Stripe iframe, chờ 3s ({_attempt+1}/4)...")
-                                        page.wait_for_timeout(3000)
-                                        continue
-
-                                    _bb = _card_ifr.bounding_box()
-                                    if not _bb or _bb['width'] < 10:
-                                        log(f"[{idx+1}] iframe bbox invalid: {_bb}, chờ 3s...")
-                                        page.wait_for_timeout(3000)
-                                        continue
-
-                                    log(f"[{idx+1}] iframe bbox: {_bb}")
-
-                                    # Click vào vùng card number (x=10%)
-                                    _cx = _bb['x'] + _bb['width'] * 0.1
-                                    _cy = _bb['y'] + _bb['height'] / 2
-                                    page.mouse.click(_cx, _cy)
-                                    _t_card.sleep(0.5)
-
-                                    # Type card number
-                                    for _ch in card_number:
-                                        page.keyboard.press(_ch)
-                                        _t_card.sleep(0.06 + _rnd.uniform(0, 0.04))
-                                    _t_card.sleep(0.5)
-                                    # Stripe auto-advance → exp field
-                                    for _ch in exp_mmyy:
-                                        page.keyboard.press(_ch)
-                                        _t_card.sleep(0.06 + _rnd.uniform(0, 0.04))
-                                    _t_card.sleep(0.5)
-                                    # Stripe auto-advance → CVC field
-                                    for _ch in cvv:
-                                        page.keyboard.press(_ch)
-                                        _t_card.sleep(0.06 + _rnd.uniform(0, 0.04))
-                                    _t_card.sleep(0.3)
-
-                                    log(f"[{idx+1}] ✓ Stripe Elements: card+exp+cvc điền xong")
-                                    card_ok = exp_ok = cvc_ok = _stripe_ok = True
-                                    break
-                                except Exception as _ce:
-                                    log(f"[{idx+1}] Elements fill err ({_attempt+1}): {_ce}")
-                                    page.wait_for_timeout(2000)
-
-                            if not _stripe_ok:
-                                # Fallback: thử từng field riêng qua frame_fill
-                                log(f"[{idx+1}] Fallback: thử frame_fill từng field...")
-                                card_ok = frame_fill(page, card_sel_hosted + [
-                                    'input[name="cardnumber"]',
-                                ], card_number, "Card number", retries=2)
-                                page.wait_for_timeout(300)
-                                exp_ok = frame_fill(page, exp_sel_hosted + [
-                                    'input[name="exp-date"]',
-                                ], exp_mmyy, "Expiry", retries=2)
-                                page.wait_for_timeout(300)
-                                cvc_ok = frame_fill(page, cvc_sel_hosted + [
-                                    'input[name="cvc"]',
-                                ], cvv, "CVC", retries=2)
-
-                        log(f"[{idx+1}] Card fill: card={card_ok} exp={exp_ok} cvc={cvc_ok}")
-                        page.wait_for_timeout(300)
-
-                        # Cardholder name
-                        if cardholder_name:
-                            smart_fill(page, [
-                                'input[name="billingName"]',
-                                'input[autocomplete*="cc-name"]',
-                                'input[placeholder*="Name on card" i]',
-                                'input[placeholder*="Cardholder" i]',
-                            ], cardholder_name, label="Cardholder name", timeout=3000)
-                            page.wait_for_timeout(200)
-
-                        # ZIP
-                        if zip_code:
-                            smart_fill(page, [
-                                'input[name="postalCode"]',
-                                'input[autocomplete*="postal-code"]',
-                                'input[placeholder*="ZIP" i]',
-                            ], zip_code, label="ZIP", timeout=3000)
-                            page.wait_for_timeout(200)
-
-                        # Phone (Stripe Link popup)
-                        _area_codes = ['201','212','213','312','404','415','512','617','702','917']
-                        _phone = f"({_rnd.choice(_area_codes)}) {_rnd.randint(200,999)}-{_rnd.randint(1000,9999)}"
-                        try:
-                            for frame in page.frames:
-                                inp = frame.locator('input[name="phoneNumber"], input[type="tel"]').first
-                                try:
-                                    inp.wait_for(state="visible", timeout=2000)
-                                    inp.click()
-                                    for ch in _phone:
-                                        inp.press_sequentially(ch, delay=55)
-                                    log(f"[{idx+1}] Phone: {_phone}")
-                                    break
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-
-                        page.wait_for_timeout(800)
-
-                        # ── Click Pay ──────────────────────────────────────────
-                        log(f"[{idx+1}] 🖱 Click Pay ...")
-                        pay_clicked = smart_click(page, [
-                            '[data-testid="hosted-payment-submit-button"]',
-                            'button:has-text("Pay")',
-                            'button:has-text("Subscribe")',
-                            'button:has-text("Start trial")',
-                            'button:has-text("Start Trial")',
-                            'button:has-text("Confirm")',
-                            'button[type="submit"]',
-                        ], label="Pay button", timeout=8000)
-
-                        if not pay_clicked:
-                            log(f"[{idx+1}] ⚠ Không tìm được Pay button — thử JS click")
-                            try:
-                                result = page.evaluate("""
-                                    () => {
-                                        const btn = [...document.querySelectorAll('button')].find(b =>
-                                            /pay|subscribe|start trial|confirm/i.test(b.textContent)
-                                        );
-                                        if(btn && !btn.disabled){ btn.click(); return btn.textContent.trim(); }
-                                        return null;
-                                    }
-                                """)
-                                if result:
-                                    log(f"[{idx+1}] ✓ JS click: '{result}'")
-                                    pay_clicked = True
-                            except Exception:
-                                pass
-
-                        # Chờ kết quả payment
-                        log(f"[{idx+1}] ⏳ Chờ kết quả payment ...")
-                        success = wait_navigation(page, [
-                            "**/dashboard**", "**/success**", "**/thank**", "**/home**"
-                        ], timeout=25000)
-
-                        final_url = page.url
-                        if any(x in final_url for x in ["dashboard","success","thank","home"]):
-                            log(f"[{idx+1}] ✅ THÀNH CÔNG — {final_url[:80]}")
-                            running_tasks[tid]["results"].append({
-                                "email": email, "status": "success", "url": final_url
-                            })
-                        else:
-                            log(f"[{idx+1}] ℹ URL sau pay: {final_url[:80]}")
-                            running_tasks[tid]["results"].append({
-                                "email": email, "status": "unknown", "url": final_url
-                            })
-
-                    running_tasks[tid]["done"] = idx + 1
-                    log(f"[{idx+1}] ✓ Xong")
-
-            except Exception as e:
-                import traceback
-                tb = traceback.format_exc()
-                log(f"[{idx+1}] ❌ Lỗi: {e}")
-                log(f"[{idx+1}] Traceback: {tb[-300:]}")
-                running_tasks[tid]["done"] = idx + 1
-                running_tasks[tid]["results"].append({
-                    "email": email if 'email' in dir() else "?", "status": "error", "error": str(e)
-                })
-
-    except Exception as e:
-        import traceback
-        push_task_log(tid, f"❌ Lỗi khởi tạo: {e}\n{traceback.format_exc()[-300:]}")
-
-    finally:
-        if tid in running_tasks:
-            running_tasks[tid]["alive"] = False
-            running_tasks[tid]["status"] = "done"
-        push_task_log(tid, "🏁 Script hoàn tất.")
-
-
-SCRIPT_RUNNERS = {
-    "dropaudit_signup": _run_dropaudit_signup,
-    "simen_trial": _run_simen_trial,
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
-# BULK PROFILE APIS
-# ══════════════════════════════════════════════════════════════════════════════
-RANDOM_NAMES_FIRST = ["Alex","Blake","Casey","Dana","Drew","Evan","Flynn","Gray","Harley","Indigo",
-    "Jamie","Kai","Lane","Morgan","Nova","Owen","Parker","Quinn","Riley","Sam",
-    "Taylor","Urban","Vale","West","Xen","Yara","Zane","Avery","Brett","Cody"]
-RANDOM_NAMES_LAST  = ["Smith","Johnson","Brown","Taylor","Anderson","Thomas","Jackson","White",
-    "Harris","Martin","Garcia","Martinez","Robinson","Clark","Lewis","Lee","Walker",
-    "Hall","Allen","Young","King","Scott","Green","Baker","Adams","Nelson","Hill","Ramirez"]
 
 class BulkCreateBody(BaseModel):
     count: int

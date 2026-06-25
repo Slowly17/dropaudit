@@ -1,5 +1,5 @@
 {
-  "version": "1.4.9",
+  "version": "1.5.0",
   "updated": "2026-06-25",
-  "notes": "Simen.ai: debug dump URL+inputs sau click trial button; thêm fallback selector input[type=text], tăng timeout 10s"
+  "notes": "Simen.ai: xóa 1272 dòng dead code (tàn dư flow cũ sau finally), fix step3 email input — chờ thông minh cho cả popup modal lẫn navigation sang /signup, fallback goto /signup nếu không tìm được input"
 }
