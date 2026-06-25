@@ -2140,6 +2140,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         log(f"[{idx+1}] DEBUG inputs: {_all_inputs}")
                     except Exception as _de:
                         log(f"[{idx+1}] DEBUG err: {_de}")
+                    # Chờ thêm 1s cho animation popup xong hẳn
+                    page.wait_for_timeout(1000)
                     _email_ok = False
                     for _esel in [
                         "input[type='email']",
@@ -2152,26 +2154,23 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         try:
                             _el = page.locator(_esel).first
                             _el.wait_for(state="visible", timeout=5000)
-                            _el.triple_click()
-                            _el.type(email, delay=60)
-                            _email_ok = True
-                            log(f"[{idx+1}] ✓ Email điền xong ({_esel})")
-                            break
+                            # scroll vào view, focus, rồi fill
+                            _el.scroll_into_view_if_needed()
+                            page.wait_for_timeout(300)
+                            _el.click()
+                            page.wait_for_timeout(200)
+                            _el.fill(email)
+                            page.wait_for_timeout(200)
+                            # verify
+                            _got = _el.input_value()
+                            if _got.strip():
+                                _email_ok = True
+                                log(f"[{idx+1}] ✓ Email điền xong ({_esel}): {_got}")
+                                break
                         except Exception:
                             pass
                     if not _email_ok:
-                        log(f"[{idx+1}] ⚠ Không thấy email input — thử /signup trực tiếp")
-                        try:
-                            page.goto("https://simen.ai/signup", wait_until="domcontentloaded", timeout=20000)
-                            page.wait_for_timeout(2000)
-                            _el2 = page.locator("input[type='email'], input[name='email'], input[placeholder*='email' i]").first
-                            _el2.wait_for(state="visible", timeout=8000)
-                            _el2.triple_click()
-                            _el2.type(email, delay=60)
-                            _email_ok = True
-                            log(f"[{idx+1}] ✓ Email điền xong (qua /signup fallback)")
-                        except Exception as _fe:
-                            raise Exception(f"Không tìm được email input: {_fe}")
+                        raise Exception("Không điền được email input (fill thất bại)")
 
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")
@@ -5471,6 +5470,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         log(f"[{idx+1}] DEBUG inputs: {_all_inputs}")
                     except Exception as _de:
                         log(f"[{idx+1}] DEBUG err: {_de}")
+                    # Chờ thêm 1s cho animation popup xong hẳn
+                    page.wait_for_timeout(1000)
                     _email_ok = False
                     for _esel in [
                         "input[type='email']",
@@ -5483,26 +5484,23 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         try:
                             _el = page.locator(_esel).first
                             _el.wait_for(state="visible", timeout=5000)
-                            _el.triple_click()
-                            _el.type(email, delay=60)
-                            _email_ok = True
-                            log(f"[{idx+1}] ✓ Email điền xong ({_esel})")
-                            break
+                            # scroll vào view, focus, rồi fill
+                            _el.scroll_into_view_if_needed()
+                            page.wait_for_timeout(300)
+                            _el.click()
+                            page.wait_for_timeout(200)
+                            _el.fill(email)
+                            page.wait_for_timeout(200)
+                            # verify
+                            _got = _el.input_value()
+                            if _got.strip():
+                                _email_ok = True
+                                log(f"[{idx+1}] ✓ Email điền xong ({_esel}): {_got}")
+                                break
                         except Exception:
                             pass
                     if not _email_ok:
-                        log(f"[{idx+1}] ⚠ Không thấy email input — thử /signup trực tiếp")
-                        try:
-                            page.goto("https://simen.ai/signup", wait_until="domcontentloaded", timeout=20000)
-                            page.wait_for_timeout(2000)
-                            _el2 = page.locator("input[type='email'], input[name='email'], input[placeholder*='email' i]").first
-                            _el2.wait_for(state="visible", timeout=8000)
-                            _el2.triple_click()
-                            _el2.type(email, delay=60)
-                            _email_ok = True
-                            log(f"[{idx+1}] ✓ Email điền xong (qua /signup fallback)")
-                        except Exception as _fe:
-                            raise Exception(f"Không tìm được email input: {_fe}")
+                        raise Exception("Không điền được email input (fill thất bại)")
 
                     # ── STEP 4: Click Continue (popup) ───────────────────────
                     log(f"[{idx+1}] Click Continue (sau email) ...")

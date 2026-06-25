@@ -1,5 +1,5 @@
 {
-  "version": "1.5.1",
+  "version": "1.5.2",
   "updated": "2026-06-25",
-  "notes": "Fix NameError: SCRIPT_RUNNERS bị xóa nhầm theo dead code — thêm lại trước _queue_lock"
+  "notes": "Simen.ai step3: bỏ triple_click+type → dùng scroll+click+fill, chờ 1s animation popup, verify input_value sau fill"
 }
