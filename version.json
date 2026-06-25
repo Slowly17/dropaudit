@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "updated": "2026-06-25",
-  "notes": "Simen.ai: xóa 1272 dòng dead code (tàn dư flow cũ sau finally), fix step3 email input — chờ thông minh cho cả popup modal lẫn navigation sang /signup, fallback goto /signup nếu không tìm được input"
+  "notes": "Fix NameError: SCRIPT_RUNNERS bị xóa nhầm theo dead code — thêm lại trước _queue_lock"
 }

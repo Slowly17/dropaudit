@@ -2524,6 +2524,11 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
         push_task_log(tid, "🏁 Script hoàn tất.")
 
 
+SCRIPT_RUNNERS = {
+    "dropaudit_signup": _run_dropaudit_signup,
+    "simen_trial": _run_simen_trial,
+}
+
 _queue_lock = threading.Lock()
 _data_queue: list[dict] = []   # [{...row, _idx, _status: pending/running/done/failed}]
 _QUEUE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queue.json")
