@@ -1,5 +1,5 @@
 {
-  "version": "1.5.2",
+  "version": "1.5.3",
   "updated": "2026-06-25",
-  "notes": "Simen.ai step3: bỏ triple_click+type → dùng scroll+click+fill, chờ 1s animation popup, verify input_value sau fill"
+  "notes": "Simen.ai step3: log exception từng selector để debug fill thất bại"
 }

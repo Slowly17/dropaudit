@@ -2167,8 +2167,10 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                 _email_ok = True
                                 log(f"[{idx+1}] ✓ Email điền xong ({_esel}): {_got}")
                                 break
-                        except Exception:
-                            pass
+                            else:
+                                log(f"[{idx+1}] ✗ fill() xong nhưng value rỗng ({_esel})")
+                        except Exception as _ee:
+                            log(f"[{idx+1}] ✗ {_esel}: {_ee}")
                     if not _email_ok:
                         raise Exception("Không điền được email input (fill thất bại)")
 
@@ -5497,8 +5499,10 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                 _email_ok = True
                                 log(f"[{idx+1}] ✓ Email điền xong ({_esel}): {_got}")
                                 break
-                        except Exception:
-                            pass
+                            else:
+                                log(f"[{idx+1}] ✗ fill() xong nhưng value rỗng ({_esel})")
+                        except Exception as _ee:
+                            log(f"[{idx+1}] ✗ {_esel}: {_ee}")
                     if not _email_ok:
                         raise Exception("Không điền được email input (fill thất bại)")
 
