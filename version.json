@@ -1,5 +1,5 @@
 {
-  "version": "1.5.8",
+  "version": "1.5.9",
   "updated": "2026-06-25",
-  "notes": "Fix Choose Lite: debug buttons dump + fallback same-tab Stripe navigation thay vì chỉ expect_popup"
+  "notes": "v1.5.9: debug Lite button state (disabled/rect) + JS click + force click"
 }

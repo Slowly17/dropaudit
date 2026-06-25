@@ -2329,7 +2329,25 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     _stripe_page = None
                     _lite_clicked = False
 
-                    # Helper: click plan button
+                    # Debug: trạng thái button Choose Lite
+                    try:
+                        _btn_info = page.evaluate("""() => {
+                            const btns = Array.from(document.querySelectorAll('button'));
+                            const lite = btns.filter(b => b.innerText.includes('Lite') || b.innerText.includes('Choose'));
+                            return lite.map(b => ({
+                                text: b.innerText.trim().slice(0,50),
+                                disabled: b.disabled,
+                                hidden: b.hidden,
+                                offsetW: b.offsetWidth,
+                                offsetH: b.offsetHeight,
+                                rect: JSON.stringify(b.getBoundingClientRect())
+                            }));
+                        }""")
+                        log(f"[{idx+1}] Lite btn info: {_btn_info}")
+                    except Exception as _bi:
+                        log(f"[{idx+1}] btn info err: {_bi}")
+
+                    # Helper: click plan button — thử nhiều cách
                     def _click_lite():
                         for _lsel2 in [
                             "button:has-text('Choose Lite')",
@@ -2340,10 +2358,26 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             try:
                                 _ll = page.locator(_lsel2).first
                                 _ll.wait_for(state="visible", timeout=4000)
-                                _ll.click()
+                                # Scroll vào view trước
+                                try:
+                                    _ll.evaluate("el => el.scrollIntoView({block:'center'})")
+                                    page.wait_for_timeout(500)
+                                except Exception:
+                                    pass
+                                # Thử JS click trước (bypass overlay/disabled check)
+                                try:
+                                    page.evaluate(f"""() => {{
+                                        const btns = Array.from(document.querySelectorAll('button'));
+                                        const b = btns.find(b => b.innerText.includes('Choose Lite') || b.innerText.includes('Lite'));
+                                        if (b) b.click();
+                                    }}""")
+                                    return _lsel2 + " (JS click)"
+                                except Exception:
+                                    pass
+                                _ll.click(force=True)
                                 return _lsel2
-                            except Exception:
-                                pass
+                            except Exception as _ce:
+                                log(f"[{idx+1}] click err ({_lsel2}): {str(_ce)[:60]}")
                         return None
 
                     # Attempt 1: expect_popup
@@ -5744,7 +5778,25 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     _stripe_page = None
                     _lite_clicked = False
 
-                    # Helper: click plan button
+                    # Debug: trạng thái button Choose Lite
+                    try:
+                        _btn_info = page.evaluate("""() => {
+                            const btns = Array.from(document.querySelectorAll('button'));
+                            const lite = btns.filter(b => b.innerText.includes('Lite') || b.innerText.includes('Choose'));
+                            return lite.map(b => ({
+                                text: b.innerText.trim().slice(0,50),
+                                disabled: b.disabled,
+                                hidden: b.hidden,
+                                offsetW: b.offsetWidth,
+                                offsetH: b.offsetHeight,
+                                rect: JSON.stringify(b.getBoundingClientRect())
+                            }));
+                        }""")
+                        log(f"[{idx+1}] Lite btn info: {_btn_info}")
+                    except Exception as _bi:
+                        log(f"[{idx+1}] btn info err: {_bi}")
+
+                    # Helper: click plan button — thử nhiều cách
                     def _click_lite():
                         for _lsel2 in [
                             "button:has-text('Choose Lite')",
@@ -5755,10 +5807,26 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             try:
                                 _ll = page.locator(_lsel2).first
                                 _ll.wait_for(state="visible", timeout=4000)
-                                _ll.click()
+                                # Scroll vào view trước
+                                try:
+                                    _ll.evaluate("el => el.scrollIntoView({block:'center'})")
+                                    page.wait_for_timeout(500)
+                                except Exception:
+                                    pass
+                                # Thử JS click trước (bypass overlay/disabled check)
+                                try:
+                                    page.evaluate(f"""() => {{
+                                        const btns = Array.from(document.querySelectorAll('button'));
+                                        const b = btns.find(b => b.innerText.includes('Choose Lite') || b.innerText.includes('Lite'));
+                                        if (b) b.click();
+                                    }}""")
+                                    return _lsel2 + " (JS click)"
+                                except Exception:
+                                    pass
+                                _ll.click(force=True)
                                 return _lsel2
-                            except Exception:
-                                pass
+                            except Exception as _ce:
+                                log(f"[{idx+1}] click err ({_lsel2}): {str(_ce)[:60]}")
                         return None
 
                     # Attempt 1: expect_popup
