@@ -2281,49 +2281,101 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     log(f"[{idx+1}] Tìm & click Choose Lite ...")
                     # Đảm bảo đang ở plan tab
                     _cur = page.url
+                    log(f"[{idx+1}] Dashboard URL: {_cur[:80]}")
                     if "dashboard" in _cur and "tab=plan" not in _cur:
                         try:
                             page.goto("https://simen.ai/dashboard?tab=plan",
                                      wait_until="domcontentloaded", timeout=20000)
                             page.wait_for_timeout(2000)
+                            log(f"[{idx+1}] Sau goto plan: {page.url[:80]}")
                         except Exception:
                             pass
 
-                    # Chờ pricing panel load
+                    # Debug: dump tất cả buttons trên page
                     try:
-                        page.wait_for_selector("button:has-text('Choose Lite')", timeout=15000)
-                    except Exception:
-                        log(f"[{idx+1}] ⚠ Không thấy 'Choose Lite' button sau 15s")
+                        _btns = page.evaluate("""() => {
+                            return Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim().slice(0,40));
+                        }""")
+                        log(f"[{idx+1}] Buttons: {_btns[:15]}")
+                    except Exception as _bde:
+                        log(f"[{idx+1}] btn debug err: {_bde}")
 
-                    # Click Choose Lite và bắt popup (new tab) từ Stripe
+                    # Chờ pricing panel load
+                    _lite_btn_found = False
+                    for _lsel in [
+                        "button:has-text('Choose Lite')",
+                        "button:has-text('Chọn Lite')",
+                        "button:has-text('Get Lite')",
+                        "button:has-text('Lite')",
+                    ]:
+                        try:
+                            page.wait_for_selector(_lsel, timeout=5000)
+                            _lite_btn_found = True
+                            log(f"[{idx+1}] ✓ Tìm thấy plan button: {_lsel}")
+                            break
+                        except Exception:
+                            pass
+                    if not _lite_btn_found:
+                        log(f"[{idx+1}] ⚠ Không thấy Choose Lite sau 5s — thử cuộn trang")
+                        try:
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                            page.wait_for_timeout(2000)
+                            _btns2 = page.evaluate("""() => Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim().slice(0,40))""")
+                            log(f"[{idx+1}] Buttons sau scroll: {_btns2[:15]}")
+                        except Exception:
+                            pass
+
+                    # Click Choose Lite — thử bắt popup trước, fallback same-tab navigation
                     _stripe_page = None
+                    _lite_clicked = False
+
+                    # Helper: click plan button
+                    def _click_lite():
+                        for _lsel2 in [
+                            "button:has-text('Choose Lite')",
+                            "button:has-text('Chọn Lite')",
+                            "button:has-text('Get Lite')",
+                            "button:has-text('Lite')",
+                        ]:
+                            try:
+                                _ll = page.locator(_lsel2).first
+                                _ll.wait_for(state="visible", timeout=4000)
+                                _ll.click()
+                                return _lsel2
+                            except Exception:
+                                pass
+                        return None
+
+                    # Attempt 1: expect_popup
                     try:
-                        with page.expect_popup(timeout=15000) as _popup_info:
-                            # Click nút Choose Lite đầu tiên
-                            for _lsel in [
-                                "button:has-text('Choose Lite')",
-                                "button:has-text('Chọn Lite')",
-                                "button:has-text('Get Lite')",
-                            ]:
-                                try:
-                                    _ll = page.locator(_lsel).first
-                                    _ll.wait_for(state="visible", timeout=5000)
-                                    _ll.click()
-                                    log(f"[{idx+1}] ✓ Click Choose Lite")
-                                    break
-                                except Exception:
-                                    pass
+                        with page.expect_popup(timeout=12000) as _popup_info:
+                            _clicked_sel = _click_lite()
+                            if _clicked_sel:
+                                log(f"[{idx+1}] ✓ Click Choose Lite: {_clicked_sel}")
+                                _lite_clicked = True
+                            else:
+                                log(f"[{idx+1}] ⚠ Không click được Choose Lite trong expect_popup")
                         _stripe_page = _popup_info.value
-                        log(f"[{idx+1}] ✓ Stripe tab mở: {_stripe_page.url[:80]}")
+                        log(f"[{idx+1}] ✓ Stripe popup tab: {_stripe_page.url[:80]}")
                     except Exception as _pe2:
-                        log(f"[{idx+1}] ⚠ expect_popup timeout ({_pe2}) — thử tìm Stripe URL trên page hiện tại")
-                        # Fallback: check nếu page đã navigate tới Stripe
-                        page.wait_for_timeout(3000)
-                        if "stripe.com" in page.url or "checkout" in page.url:
-                            _stripe_page = page
-                            log(f"[{idx+1}] Stripe trên trang hiện tại: {page.url[:80]}")
-                        else:
-                            raise Exception("Không bắt được Stripe popup và page không navigate sang Stripe")
+                        log(f"[{idx+1}] ⚠ Không có popup — kiểm tra same-tab navigation")
+                        # Attempt 2: same-tab navigation sau click
+                        if not _lite_clicked:
+                            _clicked_sel = _click_lite()
+                            if _clicked_sel:
+                                log(f"[{idx+1}] ✓ Click Choose Lite (same-tab): {_clicked_sel}")
+                                _lite_clicked = True
+                        # Chờ tối đa 15s cho page navigate sang Stripe/checkout
+                        for _si in range(15):
+                            page.wait_for_timeout(1000)
+                            _pu = page.url
+                            log(f"[{idx+1}] [{_si+1}s] URL: {_pu[:80]}")
+                            if "stripe.com" in _pu or "checkout" in _pu or "pay." in _pu:
+                                _stripe_page = page
+                                log(f"[{idx+1}] ✓ Stripe same-tab: {_pu[:80]}")
+                                break
+                        if not _stripe_page:
+                            raise Exception(f"Không bắt được Stripe (popup lẫn same-tab). URL hiện tại: {page.url[:80]}")
 
                     # ── STEP 9: Fill card trên Stripe Hosted Checkout ────────
                     sp = _stripe_page  # alias
@@ -5644,49 +5696,101 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     log(f"[{idx+1}] Tìm & click Choose Lite ...")
                     # Đảm bảo đang ở plan tab
                     _cur = page.url
+                    log(f"[{idx+1}] Dashboard URL: {_cur[:80]}")
                     if "dashboard" in _cur and "tab=plan" not in _cur:
                         try:
                             page.goto("https://simen.ai/dashboard?tab=plan",
                                      wait_until="domcontentloaded", timeout=20000)
                             page.wait_for_timeout(2000)
+                            log(f"[{idx+1}] Sau goto plan: {page.url[:80]}")
                         except Exception:
                             pass
 
-                    # Chờ pricing panel load
+                    # Debug: dump tất cả buttons trên page
                     try:
-                        page.wait_for_selector("button:has-text('Choose Lite')", timeout=15000)
-                    except Exception:
-                        log(f"[{idx+1}] ⚠ Không thấy 'Choose Lite' button sau 15s")
+                        _btns = page.evaluate("""() => {
+                            return Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim().slice(0,40));
+                        }""")
+                        log(f"[{idx+1}] Buttons: {_btns[:15]}")
+                    except Exception as _bde:
+                        log(f"[{idx+1}] btn debug err: {_bde}")
 
-                    # Click Choose Lite và bắt popup (new tab) từ Stripe
+                    # Chờ pricing panel load
+                    _lite_btn_found = False
+                    for _lsel in [
+                        "button:has-text('Choose Lite')",
+                        "button:has-text('Chọn Lite')",
+                        "button:has-text('Get Lite')",
+                        "button:has-text('Lite')",
+                    ]:
+                        try:
+                            page.wait_for_selector(_lsel, timeout=5000)
+                            _lite_btn_found = True
+                            log(f"[{idx+1}] ✓ Tìm thấy plan button: {_lsel}")
+                            break
+                        except Exception:
+                            pass
+                    if not _lite_btn_found:
+                        log(f"[{idx+1}] ⚠ Không thấy Choose Lite sau 5s — thử cuộn trang")
+                        try:
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                            page.wait_for_timeout(2000)
+                            _btns2 = page.evaluate("""() => Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim().slice(0,40))""")
+                            log(f"[{idx+1}] Buttons sau scroll: {_btns2[:15]}")
+                        except Exception:
+                            pass
+
+                    # Click Choose Lite — thử bắt popup trước, fallback same-tab navigation
                     _stripe_page = None
+                    _lite_clicked = False
+
+                    # Helper: click plan button
+                    def _click_lite():
+                        for _lsel2 in [
+                            "button:has-text('Choose Lite')",
+                            "button:has-text('Chọn Lite')",
+                            "button:has-text('Get Lite')",
+                            "button:has-text('Lite')",
+                        ]:
+                            try:
+                                _ll = page.locator(_lsel2).first
+                                _ll.wait_for(state="visible", timeout=4000)
+                                _ll.click()
+                                return _lsel2
+                            except Exception:
+                                pass
+                        return None
+
+                    # Attempt 1: expect_popup
                     try:
-                        with page.expect_popup(timeout=15000) as _popup_info:
-                            # Click nút Choose Lite đầu tiên
-                            for _lsel in [
-                                "button:has-text('Choose Lite')",
-                                "button:has-text('Chọn Lite')",
-                                "button:has-text('Get Lite')",
-                            ]:
-                                try:
-                                    _ll = page.locator(_lsel).first
-                                    _ll.wait_for(state="visible", timeout=5000)
-                                    _ll.click()
-                                    log(f"[{idx+1}] ✓ Click Choose Lite")
-                                    break
-                                except Exception:
-                                    pass
+                        with page.expect_popup(timeout=12000) as _popup_info:
+                            _clicked_sel = _click_lite()
+                            if _clicked_sel:
+                                log(f"[{idx+1}] ✓ Click Choose Lite: {_clicked_sel}")
+                                _lite_clicked = True
+                            else:
+                                log(f"[{idx+1}] ⚠ Không click được Choose Lite trong expect_popup")
                         _stripe_page = _popup_info.value
-                        log(f"[{idx+1}] ✓ Stripe tab mở: {_stripe_page.url[:80]}")
+                        log(f"[{idx+1}] ✓ Stripe popup tab: {_stripe_page.url[:80]}")
                     except Exception as _pe2:
-                        log(f"[{idx+1}] ⚠ expect_popup timeout ({_pe2}) — thử tìm Stripe URL trên page hiện tại")
-                        # Fallback: check nếu page đã navigate tới Stripe
-                        page.wait_for_timeout(3000)
-                        if "stripe.com" in page.url or "checkout" in page.url:
-                            _stripe_page = page
-                            log(f"[{idx+1}] Stripe trên trang hiện tại: {page.url[:80]}")
-                        else:
-                            raise Exception("Không bắt được Stripe popup và page không navigate sang Stripe")
+                        log(f"[{idx+1}] ⚠ Không có popup — kiểm tra same-tab navigation")
+                        # Attempt 2: same-tab navigation sau click
+                        if not _lite_clicked:
+                            _clicked_sel = _click_lite()
+                            if _clicked_sel:
+                                log(f"[{idx+1}] ✓ Click Choose Lite (same-tab): {_clicked_sel}")
+                                _lite_clicked = True
+                        # Chờ tối đa 15s cho page navigate sang Stripe/checkout
+                        for _si in range(15):
+                            page.wait_for_timeout(1000)
+                            _pu = page.url
+                            log(f"[{idx+1}] [{_si+1}s] URL: {_pu[:80]}")
+                            if "stripe.com" in _pu or "checkout" in _pu or "pay." in _pu:
+                                _stripe_page = page
+                                log(f"[{idx+1}] ✓ Stripe same-tab: {_pu[:80]}")
+                                break
+                        if not _stripe_page:
+                            raise Exception(f"Không bắt được Stripe (popup lẫn same-tab). URL hiện tại: {page.url[:80]}")
 
                     # ── STEP 9: Fill card trên Stripe Hosted Checkout ────────
                     sp = _stripe_page  # alias

@@ -1,5 +1,5 @@
 {
-  "version": "1.5.7",
+  "version": "1.5.8",
   "updated": "2026-06-25",
-  "notes": "Fix JS selector dùng double-quote; fix Continue button không click nhầm OAuth buttons (Twitter/X/Apple/Facebook)"
+  "notes": "Fix Choose Lite: debug buttons dump + fallback same-tab Stripe navigation thay vì chỉ expect_popup"
 }
