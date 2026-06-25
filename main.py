@@ -2024,12 +2024,12 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     running_tasks[tid]["status"] = "running"
 
     # ── Build proxy từ profile (proxy_server / proxy_username / proxy_password) ──
-    _proxy_server   = profile.get("proxy_server", "").strip()
-    _proxy_username = profile.get("proxy_username", "").strip()
-    _proxy_password = profile.get("proxy_password", "").strip()
+    _proxy_server   = (profile.get("proxy_server") or "").strip()
+    _proxy_username = (profile.get("proxy_username") or "").strip()
+    _proxy_password = (profile.get("proxy_password") or "").strip()
     # Fallback: field "proxy" dạng string cũ
     if not _proxy_server:
-        _proxy_server = profile.get("proxy", "").strip()
+        _proxy_server = (profile.get("proxy") or "").strip()
 
     _proxy_kwargs = {}
     if _proxy_server:
@@ -5487,11 +5487,11 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     running_tasks[tid]["status"] = "running"
 
     # ── Build proxy từ profile (proxy_server / proxy_username / proxy_password) ──
-    _proxy_server   = profile.get("proxy_server", "").strip()
-    _proxy_username = profile.get("proxy_username", "").strip()
-    _proxy_password = profile.get("proxy_password", "").strip()
+    _proxy_server   = (profile.get("proxy_server") or "").strip()
+    _proxy_username = (profile.get("proxy_username") or "").strip()
+    _proxy_password = (profile.get("proxy_password") or "").strip()
     if not _proxy_server:
-        _proxy_server = profile.get("proxy", "").strip()
+        _proxy_server = (profile.get("proxy") or "").strip()
 
     _proxy_kwargs = {}
     if _proxy_server:

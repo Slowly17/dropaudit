@@ -1,5 +1,5 @@
 {
-  "version": "1.6.1",
+  "version": "1.6.2",
   "updated": "2026-06-25",
-  "notes": "v1.6.1: thread crash giờ hiện log lỗi thay vì 'Chưa có log'"
+  "notes": "v1.6.1: fix null proxy fields (or "" thay vì default)"
 }
