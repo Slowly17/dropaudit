@@ -2031,7 +2031,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     if not _proxy_server:
         _proxy_server = profile.get("proxy", "").strip()
 
-    _proxy_kwargs: dict = {}
+    _proxy_kwargs = {}
     if _proxy_server:
         _proxy_kwargs["proxy"] = {"server": _proxy_server}
         if _proxy_username:
@@ -2905,8 +2905,11 @@ def run_multi_task(body: MultiRunRequest):
                     final = running_tasks.get(t, {}).get("status", "done")
                     queue_done(ri, "done" if final == "done" else "failed")
                 except Exception as ex:
+                    import traceback as _tb
+                    _errmsg = f"❌ Thread crash: {ex}\n{_tb.format_exc()}"
                     if t in running_tasks:
                         running_tasks[t]["status"] = "failed"
+                        running_tasks[t]["logs"].append(_errmsg)
                     queue_done(ri, "failed")
             return _run
 
@@ -5490,7 +5493,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     if not _proxy_server:
         _proxy_server = profile.get("proxy", "").strip()
 
-    _proxy_kwargs: dict = {}
+    _proxy_kwargs = {}
     if _proxy_server:
         _proxy_kwargs["proxy"] = {"server": _proxy_server}
         if _proxy_username:
@@ -6228,8 +6231,11 @@ def run_multi_task(body: MultiRunRequest):
                     final = running_tasks.get(t, {}).get("status", "done")
                     queue_done(ri, "done" if final == "done" else "failed")
                 except Exception as ex:
+                    import traceback as _tb
+                    _errmsg = f"❌ Thread crash: {ex}\n{_tb.format_exc()}"
                     if t in running_tasks:
                         running_tasks[t]["status"] = "failed"
+                        running_tasks[t]["logs"].append(_errmsg)
                     queue_done(ri, "failed")
             return _run
 

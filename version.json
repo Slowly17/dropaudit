@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.1",
   "updated": "2026-06-25",
-  "notes": "v1.6.0: fix proxy — đọc proxy_server/username/password thay vì field 'proxy' sai"
+  "notes": "v1.6.1: thread crash giờ hiện log lỗi thay vì 'Chưa có log'"
 }
