@@ -2021,20 +2021,35 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     def alive():
         return running_tasks.get(tid, {}).get("alive", False)
 
-    proxy_str = profile.get("proxy", "")
     running_tasks[tid]["status"] = "running"
 
-    # ── Pre-check proxy ──────────────────────────────────────────────────────
-    if proxy_str:
+    # ── Build proxy từ profile (proxy_server / proxy_username / proxy_password) ──
+    _proxy_server   = profile.get("proxy_server", "").strip()
+    _proxy_username = profile.get("proxy_username", "").strip()
+    _proxy_password = profile.get("proxy_password", "").strip()
+    # Fallback: field "proxy" dạng string cũ
+    if not _proxy_server:
+        _proxy_server = profile.get("proxy", "").strip()
+
+    _proxy_kwargs: dict = {}
+    if _proxy_server:
+        _proxy_kwargs["proxy"] = {"server": _proxy_server}
+        if _proxy_username:
+            _proxy_kwargs["proxy"]["username"] = _proxy_username
+        if _proxy_password:
+            _proxy_kwargs["proxy"]["password"] = _proxy_password
+        # Pre-check
         try:
-            _ptype = "socks5" if "socks5" in proxy_str else "http"
-            _proxies = {_ptype: proxy_str, "https": proxy_str}
-            log(f"⏱ Kiểm tra proxy: {proxy_str} ...")
-            _r = _req.get("https://api.ipify.org?format=json", proxies=_proxies, timeout=12)
+            _ptype = "socks5" if "socks5" in _proxy_server else "http"
+            _pcheck = {_ptype: _proxy_server, "https": _proxy_server}
+            log(f"⏱ Kiểm tra proxy: {_proxy_server} ...")
+            _r = _req.get("https://api.ipify.org?format=json", proxies=_pcheck, timeout=12)
             _ip = _r.json().get("ip", "?")
             log(f"✅ Proxy OK — IP: {_ip}")
         except Exception as _pe:
             log(f"⚠ Proxy check lỗi: {_pe} — vẫn tiếp tục")
+    else:
+        log("⚠ Profile không có proxy — chạy IP trực tiếp")
 
     total = len(rows)
     log(f"Bắt đầu — {total} hàng")
@@ -2059,11 +2074,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
             log(f"─── [{idx+1}/{total}] {email} ───")
 
             try:
-                kwargs = {}
-                if proxy_str:
-                    kwargs["proxy"] = proxy_str
-
-                ip_client = InvisiblePlaywright(**kwargs)
+                ip_client = InvisiblePlaywright(**_proxy_kwargs)
                 with ip_client as browser:
                     ctx  = browser.contexts[0] if browser.contexts else None  # playwright context
                     page = browser.new_page()
@@ -5470,20 +5481,33 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     def alive():
         return running_tasks.get(tid, {}).get("alive", False)
 
-    proxy_str = profile.get("proxy", "")
     running_tasks[tid]["status"] = "running"
 
-    # ── Pre-check proxy ──────────────────────────────────────────────────────
-    if proxy_str:
+    # ── Build proxy từ profile (proxy_server / proxy_username / proxy_password) ──
+    _proxy_server   = profile.get("proxy_server", "").strip()
+    _proxy_username = profile.get("proxy_username", "").strip()
+    _proxy_password = profile.get("proxy_password", "").strip()
+    if not _proxy_server:
+        _proxy_server = profile.get("proxy", "").strip()
+
+    _proxy_kwargs: dict = {}
+    if _proxy_server:
+        _proxy_kwargs["proxy"] = {"server": _proxy_server}
+        if _proxy_username:
+            _proxy_kwargs["proxy"]["username"] = _proxy_username
+        if _proxy_password:
+            _proxy_kwargs["proxy"]["password"] = _proxy_password
         try:
-            _ptype = "socks5" if "socks5" in proxy_str else "http"
-            _proxies = {_ptype: proxy_str, "https": proxy_str}
-            log(f"⏱ Kiểm tra proxy: {proxy_str} ...")
-            _r = _req.get("https://api.ipify.org?format=json", proxies=_proxies, timeout=12)
+            _ptype = "socks5" if "socks5" in _proxy_server else "http"
+            _pcheck = {_ptype: _proxy_server, "https": _proxy_server}
+            log(f"⏱ Kiểm tra proxy: {_proxy_server} ...")
+            _r = _req.get("https://api.ipify.org?format=json", proxies=_pcheck, timeout=12)
             _ip = _r.json().get("ip", "?")
             log(f"✅ Proxy OK — IP: {_ip}")
         except Exception as _pe:
             log(f"⚠ Proxy check lỗi: {_pe} — vẫn tiếp tục")
+    else:
+        log("⚠ Profile không có proxy — chạy IP trực tiếp")
 
     total = len(rows)
     log(f"Bắt đầu — {total} hàng")
@@ -5508,11 +5532,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
             log(f"─── [{idx+1}/{total}] {email} ───")
 
             try:
-                kwargs = {}
-                if proxy_str:
-                    kwargs["proxy"] = proxy_str
-
-                ip_client = InvisiblePlaywright(**kwargs)
+                ip_client = InvisiblePlaywright(**_proxy_kwargs)
                 with ip_client as browser:
                     ctx  = browser.contexts[0] if browser.contexts else None  # playwright context
                     page = browser.new_page()
