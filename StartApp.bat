@@ -37,7 +37,7 @@ set "LOCAL_VER=!LOCAL_VER: =!"
 set "LOCAL_VER=!LOCAL_VER:"=!"
 
 :: Lay version remote (tai version.json tu GitHub)
-curl -s -o "%TEMP%\dropaudit_ver.json" "%REPO_RAW%/version.json" 2>nul
+curl -s -o "%TEMP%\dropaudit_ver.json" "%REPO_RAW%/version.json?nocache=%RANDOM%%RANDOM%" 2>nul
 if exist "%TEMP%\dropaudit_ver.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr /i "version" "%TEMP%\dropaudit_ver.json"') do (
         set "REMOTE_VER=%%~a"
@@ -62,7 +62,7 @@ if "!LOCAL_VER!"=="!REMOTE_VER!" (
 :: ===== CO BAN MOI - TAI VE =====
 echo.
 echo [*] Co ban moi! Dang tai ve...
-curl -L -s -o "%TEMP%\dropaudit_new.zip" "%REPO_ZIP%"
+curl -L -s -o "%TEMP%\dropaudit_new.zip" "%REPO_ZIP%?nocache=%RANDOM%%RANDOM%"
 if not exist "%TEMP%\dropaudit_new.zip" (
     echo [!] Tai that bai, dung ban hien tai.
     goto :run_app
