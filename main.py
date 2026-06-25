@@ -2009,10 +2009,474 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
 
 def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
-    """Simen.ai $1 trial — rewritten: proxy pre-check, smart waits, robust Stripe fill."""
+    """Simen.ai $1 trial — v2: popup login modal + new-tab Stripe + hosted checkout fill."""
     import os, time as _time, random as _rnd, requests as _req
     if not os.environ.get("DISPLAY"):
         os.environ["DISPLAY"] = ":99"
+
+    def log(msg):
+        push_task_log(tid, msg)
+
+    def alive():
+        return running_tasks.get(tid, {}).get("alive", False)
+
+    proxy_str = profile.get("proxy", "")
+    running_tasks[tid]["status"] = "running"
+
+    # ── Pre-check proxy ──────────────────────────────────────────────────────
+    if proxy_str:
+        try:
+            _ptype = "socks5" if "socks5" in proxy_str else "http"
+            _proxies = {_ptype: proxy_str, "https": proxy_str}
+            log(f"⏱ Kiểm tra proxy: {proxy_str} ...")
+            _r = _req.get("https://api.ipify.org?format=json", proxies=_proxies, timeout=12)
+            _ip = _r.json().get("ip", "?")
+            log(f"✅ Proxy OK — IP: {_ip}")
+        except Exception as _pe:
+            log(f"⚠ Proxy check lỗi: {_pe} — vẫn tiếp tục")
+
+    total = len(rows)
+    log(f"Bắt đầu — {total} hàng")
+
+    try:
+        for idx, row in enumerate(rows):
+            if not alive():
+                log("⛔ Dừng theo lệnh")
+                break
+
+            email         = row.get("email", "").strip()
+            password      = row.get("password", "").strip() or "Pass@" + str(_rnd.randint(10000, 99999))
+            card_number   = row.get("card_number", "").strip().replace(" ", "")
+            exp_month     = row.get("exp_month", "").strip().zfill(2)
+            exp_year      = row.get("exp_year", "").strip()
+            exp_year2     = exp_year[-2:] if len(exp_year) >= 2 else exp_year
+            exp_mmyy      = exp_month + exp_year2
+            cvv           = row.get("cvv", "").strip()
+            cardholder    = row.get("cardholder_name", "").strip()
+            zip_code      = row.get("zip_code", "").strip() or str(_rnd.randint(10000, 99999))
+
+            log(f"─── [{idx+1}/{total}] {email} ───")
+
+            try:
+                kwargs = {}
+                if proxy_str:
+                    kwargs["proxy"] = proxy_str
+
+                ip_client = InvisiblePlaywright(**kwargs)
+                with ip_client as browser:
+                    ctx  = browser._context   # playwright context (for popup detection)
+                    page = browser.new_page()
+                    page.set_default_timeout(30000)
+
+                    # ── STEP 1: Mở trang ─────────────────────────────────────
+                    log(f"[{idx+1}] Mở simen.ai ...")
+                    try:
+                        page.goto("https://simen.ai/", wait_until="domcontentloaded", timeout=45000)
+                    except Exception as _ge:
+                        log(f"[{idx+1}] goto warn: {_ge} — tiếp tục")
+                    # Bỏ networkidle (timeout thường xuyên), dùng timeout cố định
+                    page.wait_for_timeout(3000)
+                    log(f"[{idx+1}] URL: {page.url[:70]}")
+
+                    # ── STEP 2: Click nút Try for $1 → popup login modal ─────
+                    log(f"[{idx+1}] Click 'Try for $1' ...")
+                    _trial_ok = False
+                    for _tsel in [
+                        "button:has-text('Try for $1')",
+                        "button:has-text('Start your $1 trial')",
+                        "a:has-text('Try for $1')",
+                        "button:has-text('Get Started')",
+                        "a:has-text('Get Started')",
+                    ]:
+                        try:
+                            _tl = page.locator(_tsel).first
+                            _tl.wait_for(state="visible", timeout=6000)
+                            _tl.click()
+                            _trial_ok = True
+                            log(f"[{idx+1}] ✓ Click trial button: {_tsel}")
+                            break
+                        except Exception:
+                            pass
+                    if not _trial_ok:
+                        log(f"[{idx+1}] ⚠ Không thấy trial button — thử Get Started")
+                        try:
+                            page.locator("text=Get Started").first.click()
+                        except Exception:
+                            pass
+                    page.wait_for_timeout(1500)
+
+                    # ── STEP 3: Điền email vào popup modal ───────────────────
+                    log(f"[{idx+1}] Điền email vào popup ...")
+                    _email_ok = False
+                    for _esel in [
+                        "input[type='email']",
+                        "input[name='email']",
+                        "input[placeholder*='email' i]",
+                        "input[placeholder*='name@example' i]",
+                    ]:
+                        try:
+                            _el = page.locator(_esel).first
+                            _el.wait_for(state="visible", timeout=8000)
+                            _el.triple_click()
+                            _el.type(email, delay=60)
+                            _email_ok = True
+                            log(f"[{idx+1}] ✓ Email điền xong")
+                            break
+                        except Exception:
+                            pass
+                    if not _email_ok:
+                        raise Exception("Không tìm được email input trong popup")
+
+                    # ── STEP 4: Click Continue (popup) ───────────────────────
+                    log(f"[{idx+1}] Click Continue (sau email) ...")
+                    for _csel in [
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
+                        "button[type='submit']:has-text('Continue')",
+                        "button.auth-btn:has-text('Continue')",
+                    ]:
+                        try:
+                            _cl = page.locator(_csel).first
+                            _cl.wait_for(state="visible", timeout=5000)
+                            _cl.click()
+                            log(f"[{idx+1}] ✓ Click Continue")
+                            break
+                        except Exception:
+                            pass
+                    page.wait_for_timeout(1500)
+
+                    # ── STEP 5: Điền password ────────────────────────────────
+                    log(f"[{idx+1}] Điền password ...")
+                    # Đợi password field xuất hiện
+                    _pw_appeared = False
+                    try:
+                        page.wait_for_selector("input[type='password']", timeout=10000)
+                        _pw_appeared = True
+                    except Exception:
+                        log(f"[{idx+1}] ⚠ Password field chưa hiện sau 10s")
+                    if _pw_appeared:
+                        pw_fields = page.locator("input[type='password']").all()
+                        for _pwf in pw_fields[:2]:
+                            try:
+                                _pwf.wait_for(state="visible", timeout=3000)
+                                _pwf.click()
+                                _pwf.press("Control+a")
+                                _pwf.type(password, delay=55)
+                            except Exception:
+                                pass
+                        log(f"[{idx+1}] ✓ Password điền xong ({len(pw_fields)} field)")
+                    page.wait_for_timeout(400)
+
+                    # ── STEP 6: Click Continue / Create Account ──────────────
+                    log(f"[{idx+1}] Click Continue/Create ...")
+                    for _s6 in [
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
+                        "button:has-text('Create account')",
+                        "button:has-text('Create Account')",
+                        "button:has-text('Sign up')",
+                        "button[type='submit']:not([disabled])",
+                    ]:
+                        try:
+                            _s6l = page.locator(_s6).first
+                            _s6l.wait_for(state="visible", timeout=4000)
+                            _s6l.click()
+                            log(f"[{idx+1}] ✓ Click: {_s6}")
+                            break
+                        except Exception:
+                            pass
+
+                    # ── STEP 7: Chờ dashboard/plan page ─────────────────────
+                    log(f"[{idx+1}] ⏳ Chờ redirect tới dashboard ...")
+                    _dash_ok = False
+                    for _ in range(25):
+                        if not alive():
+                            break
+                        _u = page.url
+                        if "dashboard" in _u or "pricing" in _u:
+                            _dash_ok = True
+                            break
+                        page.wait_for_timeout(1000)
+                    log(f"[{idx+1}] URL sau signup: {page.url[:80]}")
+                    if not _dash_ok:
+                        log(f"[{idx+1}] ⚠ Chưa vào dashboard sau 25s — vẫn tiếp tục")
+
+                    # ── STEP 8: Click Choose Lite → popup mở Stripe tab mới ──
+                    log(f"[{idx+1}] Tìm & click Choose Lite ...")
+                    # Đảm bảo đang ở plan tab
+                    _cur = page.url
+                    if "dashboard" in _cur and "tab=plan" not in _cur:
+                        try:
+                            page.goto("https://simen.ai/dashboard?tab=plan",
+                                     wait_until="domcontentloaded", timeout=20000)
+                            page.wait_for_timeout(2000)
+                        except Exception:
+                            pass
+
+                    # Chờ pricing panel load
+                    try:
+                        page.wait_for_selector("button:has-text('Choose Lite')", timeout=15000)
+                    except Exception:
+                        log(f"[{idx+1}] ⚠ Không thấy 'Choose Lite' button sau 15s")
+
+                    # Click Choose Lite và bắt popup (new tab) từ Stripe
+                    _stripe_page = None
+                    try:
+                        with page.expect_popup(timeout=15000) as _popup_info:
+                            # Click nút Choose Lite đầu tiên
+                            for _lsel in [
+                                "button:has-text('Choose Lite')",
+                                "button:has-text('Chọn Lite')",
+                                "button:has-text('Get Lite')",
+                            ]:
+                                try:
+                                    _ll = page.locator(_lsel).first
+                                    _ll.wait_for(state="visible", timeout=5000)
+                                    _ll.click()
+                                    log(f"[{idx+1}] ✓ Click Choose Lite")
+                                    break
+                                except Exception:
+                                    pass
+                        _stripe_page = _popup_info.value
+                        log(f"[{idx+1}] ✓ Stripe tab mở: {_stripe_page.url[:80]}")
+                    except Exception as _pe2:
+                        log(f"[{idx+1}] ⚠ expect_popup timeout ({_pe2}) — thử tìm Stripe URL trên page hiện tại")
+                        # Fallback: check nếu page đã navigate tới Stripe
+                        page.wait_for_timeout(3000)
+                        if "stripe.com" in page.url or "checkout" in page.url:
+                            _stripe_page = page
+                            log(f"[{idx+1}] Stripe trên trang hiện tại: {page.url[:80]}")
+                        else:
+                            raise Exception("Không bắt được Stripe popup và page không navigate sang Stripe")
+
+                    # ── STEP 9: Fill card trên Stripe Hosted Checkout ────────
+                    sp = _stripe_page  # alias
+                    log(f"[{idx+1}] 💳 Chờ Stripe checkout load ...")
+                    try:
+                        sp.wait_for_load_state("domcontentloaded", timeout=30000)
+                    except Exception as _sle:
+                        log(f"[{idx+1}] stripe load warn: {_sle}")
+                    sp.wait_for_timeout(3000)
+                    log(f"[{idx+1}] Stripe URL: {sp.url[:80]}")
+
+                    if not card_number:
+                        log(f"[{idx+1}] ⚠ Không có card — dừng tại Stripe checkout")
+                        running_tasks[tid]["done"] = idx + 1
+                        continue
+
+                    # Log frames & inputs để debug
+                    _frames_info = [f.url[:50] for f in sp.frames if f.url]
+                    log(f"[{idx+1}] Frames ({len(_frames_info)}): {_frames_info[:5]}")
+
+                    # Stripe Hosted Checkout: inputs trực tiếp trên main page
+                    # Đợi card number field xuất hiện
+                    _card_input_sel = None
+                    for _cs in [
+                        'input[placeholder*="1234"]',
+                        'input[autocomplete="cc-number"]',
+                        'input[autocomplete*="cc-number"]',
+                        'input[name="cardNumber"]',
+                        'input[id*="cardNumber" i]',
+                    ]:
+                        try:
+                            sp.wait_for_selector(_cs, timeout=15000)
+                            _card_input_sel = _cs
+                            log(f"[{idx+1}] ✓ Card field found: {_cs}")
+                            break
+                        except Exception:
+                            pass
+
+                    if not _card_input_sel:
+                        log(f"[{idx+1}] ⚠ Không thấy card field trực tiếp — thử qua frame_fill")
+                    else:
+                        sp.wait_for_timeout(1000)
+
+                    # ── Fill card number ──────────────────────────────────────
+                    def _stripe_fill(sel_list, value, fname):
+                        for _sel in sel_list:
+                            try:
+                                _l = sp.locator(_sel).first
+                                _l.wait_for(state="visible", timeout=8000)
+                                _l.click()
+                                _l.press("Control+a")
+                                import time as _tf
+                                _tf.sleep(0.1)
+                                for _ch in value:
+                                    _l.press_sequentially(_ch, delay=80 + _rnd.randint(0, 30))
+                                _tf.sleep(0.3)
+                                _got = "".join(c for c in (_l.input_value() or "") if c.isdigit())
+                                _exp = "".join(c for c in value if c.isdigit())
+                                if _exp and (_got == _exp or _got.endswith(_exp)):
+                                    log(f"[{idx+1}] ✓ {fname}: {_got}")
+                                    return True
+                                if not _exp:
+                                    _gv = _l.input_value() or ""
+                                    if _gv.strip():
+                                        log(f"[{idx+1}] ✓ {fname}: {_gv.strip()[:20]}")
+                                        return True
+                                log(f"[{idx+1}] ✗ {fname} hụt got={_got!r} exp={_exp!r}")
+                            except Exception as _fe:
+                                pass
+                        log(f"[{idx+1}] ✗ {fname} fill thất bại")
+                        return False
+
+                    _card_sels = [
+                        'input[placeholder*="1234"]',
+                        'input[autocomplete="cc-number"]',
+                        'input[autocomplete*="cc-number"]',
+                        'input[name="cardNumber"]',
+                        'input[id*="cardNumber" i]',
+                        'input[name="cardnumber"]',
+                    ]
+                    _exp_sels = [
+                        'input[placeholder*="MM / YY" i]',
+                        'input[placeholder*="MM/YY" i]',
+                        'input[autocomplete="cc-exp"]',
+                        'input[autocomplete*="cc-exp"]',
+                        'input[name="cardExpiry"]',
+                        'input[name="exp-date"]',
+                    ]
+                    _cvc_sels = [
+                        'input[placeholder*="CVC" i]',
+                        'input[placeholder*="CVV" i]',
+                        'input[autocomplete="cc-csc"]',
+                        'input[autocomplete*="cc-csc"]',
+                        'input[name="cardCvc"]',
+                        'input[name="cvc"]',
+                    ]
+
+                    _card_ok = _stripe_fill(_card_sels, card_number, "Card number")
+                    sp.wait_for_timeout(400)
+                    _exp_ok  = _stripe_fill(_exp_sels, exp_mmyy, "Expiry")
+                    sp.wait_for_timeout(300)
+                    _cvc_ok  = _stripe_fill(_cvc_sels, cvv, "CVC")
+                    sp.wait_for_timeout(300)
+
+                    # Cardholder name
+                    if cardholder:
+                        _stripe_fill([
+                            'input[name="billingName"]',
+                            'input[autocomplete*="cc-name"]',
+                            'input[placeholder*="Full name on card" i]',
+                            'input[placeholder*="Cardholder" i]',
+                        ], cardholder, "Cardholder")
+                        sp.wait_for_timeout(200)
+
+                    # ZIP
+                    if zip_code:
+                        _stripe_fill([
+                            'input[name="postalCode"]',
+                            'input[autocomplete*="postal-code"]',
+                            'input[placeholder*="ZIP" i]',
+                        ], zip_code, "ZIP")
+                        sp.wait_for_timeout(200)
+
+                    log(f"[{idx+1}] Fill: card={_card_ok} exp={_exp_ok} cvc={_cvc_ok}")
+                    sp.wait_for_timeout(600)
+
+                    # ── Click Pay / Subscribe ─────────────────────────────────
+                    log(f"[{idx+1}] 🖱 Click Pay ...")
+                    _pay_ok = False
+                    for _psel in [
+                        '[data-testid="hosted-payment-submit-button"]',
+                        'button:has-text("Subscribe")',
+                        'button:has-text("Pay")',
+                        'button:has-text("Start trial")',
+                        'button:has-text("Start Trial")',
+                        'button:has-text("Confirm")',
+                        'button[type="submit"]',
+                    ]:
+                        try:
+                            _pl = sp.locator(_psel).first
+                            _pl.wait_for(state="visible", timeout=5000)
+                            _pl.click()
+                            _pay_ok = True
+                            log(f"[{idx+1}] ✓ Click Pay: {_psel}")
+                            break
+                        except Exception:
+                            pass
+                    if not _pay_ok:
+                        log(f"[{idx+1}] ⚠ Không click được Pay — thử JS")
+                        try:
+                            _r = sp.evaluate("""
+                                () => {
+                                    const b = [...document.querySelectorAll('button')].find(b =>
+                                        /pay|subscribe|start trial|confirm/i.test(b.textContent) && !b.disabled
+                                    );
+                                    if(b){ b.click(); return b.textContent.trim(); }
+                                    return null;
+                                }
+                            """)
+                            if _r:
+                                log(f"[{idx+1}] ✓ JS Pay: '{_r}'")
+                                _pay_ok = True
+                        except Exception:
+                            pass
+
+                    # ── Poll kết quả ──────────────────────────────────────────
+                    log(f"[{idx+1}] ⏳ Chờ kết quả payment ...")
+                    import time as _tw
+                    _t0 = _tw.time()
+                    _result_status = "unknown"
+                    _DECLINE_KW = [
+                        "your card was declined", "card was declined", "card declined",
+                        "insufficient funds", "do not honor", "invalid card",
+                        "card number is incorrect", "security code is incorrect",
+                        "expiration date is incorrect",
+                    ]
+                    while _tw.time() - _t0 < 40:
+                        _url = sp.url
+                        if "dashboard" in _url or "success" in _url or "thank" in _url:
+                            _result_status = "success"
+                            log(f"[{idx+1}] ✅ SUCCESS — {_url[:80]}")
+                            break
+                        try:
+                            _ptxt = sp.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''")
+                            if any(_kw in _ptxt for _kw in _DECLINE_KW):
+                                _kw_found = next(k for k in _DECLINE_KW if k in _ptxt)
+                                _result_status = "declined"
+                                log(f"[{idx+1}] ❌ Declined: '{_kw_found}'")
+                                break
+                            if "payment failed" in _ptxt or "unable to process" in _ptxt:
+                                _result_status = "failed"
+                                log(f"[{idx+1}] ❌ Payment failed")
+                                break
+                        except Exception:
+                            pass
+                        sp.wait_for_timeout(1500)
+
+                    if _result_status == "unknown":
+                        log(f"[{idx+1}] ℹ URL cuối: {sp.url[:80]} ({_tw.time()-_t0:.0f}s)")
+
+                    running_tasks[tid]["results"].append({
+                        "email": email,
+                        "card": card_number[:4] + "****" if card_number else "",
+                        "status": _result_status,
+                        "url": sp.url[:100],
+                    })
+                    running_tasks[tid]["done"] = idx + 1
+                    log(f"[{idx+1}] ✓ Xong — {_result_status}")
+
+            except Exception as e:
+                import traceback
+                _tb = traceback.format_exc()
+                log(f"[{idx+1}] ❌ Lỗi: {e}")
+                log(f"[{idx+1}] Traceback: {_tb[-400:]}")
+                running_tasks[tid]["done"] = idx + 1
+                running_tasks[tid]["results"].append({
+                    "email": email if 'email' in dir() else "?",
+                    "status": "error",
+                    "error": str(e),
+                })
+
+    except Exception as e:
+        import traceback
+        push_task_log(tid, f"❌ Lỗi khởi tạo: {e}\n{traceback.format_exc()[-300:]}")
+
+    finally:
+        if tid in running_tasks:
+            running_tasks[tid]["alive"] = False
+            running_tasks[tid]["status"] = "done"
+        push_task_log(tid, "🏁 Script hoàn tất.")
+
 
     def log(msg):
         push_task_log(tid, msg)
@@ -5457,10 +5921,474 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 
 
 def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
-    """Simen.ai $1 trial — rewritten: proxy pre-check, smart waits, robust Stripe fill."""
+    """Simen.ai $1 trial — v2: popup login modal + new-tab Stripe + hosted checkout fill."""
     import os, time as _time, random as _rnd, requests as _req
     if not os.environ.get("DISPLAY"):
         os.environ["DISPLAY"] = ":99"
+
+    def log(msg):
+        push_task_log(tid, msg)
+
+    def alive():
+        return running_tasks.get(tid, {}).get("alive", False)
+
+    proxy_str = profile.get("proxy", "")
+    running_tasks[tid]["status"] = "running"
+
+    # ── Pre-check proxy ──────────────────────────────────────────────────────
+    if proxy_str:
+        try:
+            _ptype = "socks5" if "socks5" in proxy_str else "http"
+            _proxies = {_ptype: proxy_str, "https": proxy_str}
+            log(f"⏱ Kiểm tra proxy: {proxy_str} ...")
+            _r = _req.get("https://api.ipify.org?format=json", proxies=_proxies, timeout=12)
+            _ip = _r.json().get("ip", "?")
+            log(f"✅ Proxy OK — IP: {_ip}")
+        except Exception as _pe:
+            log(f"⚠ Proxy check lỗi: {_pe} — vẫn tiếp tục")
+
+    total = len(rows)
+    log(f"Bắt đầu — {total} hàng")
+
+    try:
+        for idx, row in enumerate(rows):
+            if not alive():
+                log("⛔ Dừng theo lệnh")
+                break
+
+            email         = row.get("email", "").strip()
+            password      = row.get("password", "").strip() or "Pass@" + str(_rnd.randint(10000, 99999))
+            card_number   = row.get("card_number", "").strip().replace(" ", "")
+            exp_month     = row.get("exp_month", "").strip().zfill(2)
+            exp_year      = row.get("exp_year", "").strip()
+            exp_year2     = exp_year[-2:] if len(exp_year) >= 2 else exp_year
+            exp_mmyy      = exp_month + exp_year2
+            cvv           = row.get("cvv", "").strip()
+            cardholder    = row.get("cardholder_name", "").strip()
+            zip_code      = row.get("zip_code", "").strip() or str(_rnd.randint(10000, 99999))
+
+            log(f"─── [{idx+1}/{total}] {email} ───")
+
+            try:
+                kwargs = {}
+                if proxy_str:
+                    kwargs["proxy"] = proxy_str
+
+                ip_client = InvisiblePlaywright(**kwargs)
+                with ip_client as browser:
+                    ctx  = browser._context   # playwright context (for popup detection)
+                    page = browser.new_page()
+                    page.set_default_timeout(30000)
+
+                    # ── STEP 1: Mở trang ─────────────────────────────────────
+                    log(f"[{idx+1}] Mở simen.ai ...")
+                    try:
+                        page.goto("https://simen.ai/", wait_until="domcontentloaded", timeout=45000)
+                    except Exception as _ge:
+                        log(f"[{idx+1}] goto warn: {_ge} — tiếp tục")
+                    # Bỏ networkidle (timeout thường xuyên), dùng timeout cố định
+                    page.wait_for_timeout(3000)
+                    log(f"[{idx+1}] URL: {page.url[:70]}")
+
+                    # ── STEP 2: Click nút Try for $1 → popup login modal ─────
+                    log(f"[{idx+1}] Click 'Try for $1' ...")
+                    _trial_ok = False
+                    for _tsel in [
+                        "button:has-text('Try for $1')",
+                        "button:has-text('Start your $1 trial')",
+                        "a:has-text('Try for $1')",
+                        "button:has-text('Get Started')",
+                        "a:has-text('Get Started')",
+                    ]:
+                        try:
+                            _tl = page.locator(_tsel).first
+                            _tl.wait_for(state="visible", timeout=6000)
+                            _tl.click()
+                            _trial_ok = True
+                            log(f"[{idx+1}] ✓ Click trial button: {_tsel}")
+                            break
+                        except Exception:
+                            pass
+                    if not _trial_ok:
+                        log(f"[{idx+1}] ⚠ Không thấy trial button — thử Get Started")
+                        try:
+                            page.locator("text=Get Started").first.click()
+                        except Exception:
+                            pass
+                    page.wait_for_timeout(1500)
+
+                    # ── STEP 3: Điền email vào popup modal ───────────────────
+                    log(f"[{idx+1}] Điền email vào popup ...")
+                    _email_ok = False
+                    for _esel in [
+                        "input[type='email']",
+                        "input[name='email']",
+                        "input[placeholder*='email' i]",
+                        "input[placeholder*='name@example' i]",
+                    ]:
+                        try:
+                            _el = page.locator(_esel).first
+                            _el.wait_for(state="visible", timeout=8000)
+                            _el.triple_click()
+                            _el.type(email, delay=60)
+                            _email_ok = True
+                            log(f"[{idx+1}] ✓ Email điền xong")
+                            break
+                        except Exception:
+                            pass
+                    if not _email_ok:
+                        raise Exception("Không tìm được email input trong popup")
+
+                    # ── STEP 4: Click Continue (popup) ───────────────────────
+                    log(f"[{idx+1}] Click Continue (sau email) ...")
+                    for _csel in [
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
+                        "button[type='submit']:has-text('Continue')",
+                        "button.auth-btn:has-text('Continue')",
+                    ]:
+                        try:
+                            _cl = page.locator(_csel).first
+                            _cl.wait_for(state="visible", timeout=5000)
+                            _cl.click()
+                            log(f"[{idx+1}] ✓ Click Continue")
+                            break
+                        except Exception:
+                            pass
+                    page.wait_for_timeout(1500)
+
+                    # ── STEP 5: Điền password ────────────────────────────────
+                    log(f"[{idx+1}] Điền password ...")
+                    # Đợi password field xuất hiện
+                    _pw_appeared = False
+                    try:
+                        page.wait_for_selector("input[type='password']", timeout=10000)
+                        _pw_appeared = True
+                    except Exception:
+                        log(f"[{idx+1}] ⚠ Password field chưa hiện sau 10s")
+                    if _pw_appeared:
+                        pw_fields = page.locator("input[type='password']").all()
+                        for _pwf in pw_fields[:2]:
+                            try:
+                                _pwf.wait_for(state="visible", timeout=3000)
+                                _pwf.click()
+                                _pwf.press("Control+a")
+                                _pwf.type(password, delay=55)
+                            except Exception:
+                                pass
+                        log(f"[{idx+1}] ✓ Password điền xong ({len(pw_fields)} field)")
+                    page.wait_for_timeout(400)
+
+                    # ── STEP 6: Click Continue / Create Account ──────────────
+                    log(f"[{idx+1}] Click Continue/Create ...")
+                    for _s6 in [
+                        "button:has-text('Continue'):not(:has-text('Google')):not(:has-text('GitHub')):not(:has-text('Link'))",
+                        "button:has-text('Create account')",
+                        "button:has-text('Create Account')",
+                        "button:has-text('Sign up')",
+                        "button[type='submit']:not([disabled])",
+                    ]:
+                        try:
+                            _s6l = page.locator(_s6).first
+                            _s6l.wait_for(state="visible", timeout=4000)
+                            _s6l.click()
+                            log(f"[{idx+1}] ✓ Click: {_s6}")
+                            break
+                        except Exception:
+                            pass
+
+                    # ── STEP 7: Chờ dashboard/plan page ─────────────────────
+                    log(f"[{idx+1}] ⏳ Chờ redirect tới dashboard ...")
+                    _dash_ok = False
+                    for _ in range(25):
+                        if not alive():
+                            break
+                        _u = page.url
+                        if "dashboard" in _u or "pricing" in _u:
+                            _dash_ok = True
+                            break
+                        page.wait_for_timeout(1000)
+                    log(f"[{idx+1}] URL sau signup: {page.url[:80]}")
+                    if not _dash_ok:
+                        log(f"[{idx+1}] ⚠ Chưa vào dashboard sau 25s — vẫn tiếp tục")
+
+                    # ── STEP 8: Click Choose Lite → popup mở Stripe tab mới ──
+                    log(f"[{idx+1}] Tìm & click Choose Lite ...")
+                    # Đảm bảo đang ở plan tab
+                    _cur = page.url
+                    if "dashboard" in _cur and "tab=plan" not in _cur:
+                        try:
+                            page.goto("https://simen.ai/dashboard?tab=plan",
+                                     wait_until="domcontentloaded", timeout=20000)
+                            page.wait_for_timeout(2000)
+                        except Exception:
+                            pass
+
+                    # Chờ pricing panel load
+                    try:
+                        page.wait_for_selector("button:has-text('Choose Lite')", timeout=15000)
+                    except Exception:
+                        log(f"[{idx+1}] ⚠ Không thấy 'Choose Lite' button sau 15s")
+
+                    # Click Choose Lite và bắt popup (new tab) từ Stripe
+                    _stripe_page = None
+                    try:
+                        with page.expect_popup(timeout=15000) as _popup_info:
+                            # Click nút Choose Lite đầu tiên
+                            for _lsel in [
+                                "button:has-text('Choose Lite')",
+                                "button:has-text('Chọn Lite')",
+                                "button:has-text('Get Lite')",
+                            ]:
+                                try:
+                                    _ll = page.locator(_lsel).first
+                                    _ll.wait_for(state="visible", timeout=5000)
+                                    _ll.click()
+                                    log(f"[{idx+1}] ✓ Click Choose Lite")
+                                    break
+                                except Exception:
+                                    pass
+                        _stripe_page = _popup_info.value
+                        log(f"[{idx+1}] ✓ Stripe tab mở: {_stripe_page.url[:80]}")
+                    except Exception as _pe2:
+                        log(f"[{idx+1}] ⚠ expect_popup timeout ({_pe2}) — thử tìm Stripe URL trên page hiện tại")
+                        # Fallback: check nếu page đã navigate tới Stripe
+                        page.wait_for_timeout(3000)
+                        if "stripe.com" in page.url or "checkout" in page.url:
+                            _stripe_page = page
+                            log(f"[{idx+1}] Stripe trên trang hiện tại: {page.url[:80]}")
+                        else:
+                            raise Exception("Không bắt được Stripe popup và page không navigate sang Stripe")
+
+                    # ── STEP 9: Fill card trên Stripe Hosted Checkout ────────
+                    sp = _stripe_page  # alias
+                    log(f"[{idx+1}] 💳 Chờ Stripe checkout load ...")
+                    try:
+                        sp.wait_for_load_state("domcontentloaded", timeout=30000)
+                    except Exception as _sle:
+                        log(f"[{idx+1}] stripe load warn: {_sle}")
+                    sp.wait_for_timeout(3000)
+                    log(f"[{idx+1}] Stripe URL: {sp.url[:80]}")
+
+                    if not card_number:
+                        log(f"[{idx+1}] ⚠ Không có card — dừng tại Stripe checkout")
+                        running_tasks[tid]["done"] = idx + 1
+                        continue
+
+                    # Log frames & inputs để debug
+                    _frames_info = [f.url[:50] for f in sp.frames if f.url]
+                    log(f"[{idx+1}] Frames ({len(_frames_info)}): {_frames_info[:5]}")
+
+                    # Stripe Hosted Checkout: inputs trực tiếp trên main page
+                    # Đợi card number field xuất hiện
+                    _card_input_sel = None
+                    for _cs in [
+                        'input[placeholder*="1234"]',
+                        'input[autocomplete="cc-number"]',
+                        'input[autocomplete*="cc-number"]',
+                        'input[name="cardNumber"]',
+                        'input[id*="cardNumber" i]',
+                    ]:
+                        try:
+                            sp.wait_for_selector(_cs, timeout=15000)
+                            _card_input_sel = _cs
+                            log(f"[{idx+1}] ✓ Card field found: {_cs}")
+                            break
+                        except Exception:
+                            pass
+
+                    if not _card_input_sel:
+                        log(f"[{idx+1}] ⚠ Không thấy card field trực tiếp — thử qua frame_fill")
+                    else:
+                        sp.wait_for_timeout(1000)
+
+                    # ── Fill card number ──────────────────────────────────────
+                    def _stripe_fill(sel_list, value, fname):
+                        for _sel in sel_list:
+                            try:
+                                _l = sp.locator(_sel).first
+                                _l.wait_for(state="visible", timeout=8000)
+                                _l.click()
+                                _l.press("Control+a")
+                                import time as _tf
+                                _tf.sleep(0.1)
+                                for _ch in value:
+                                    _l.press_sequentially(_ch, delay=80 + _rnd.randint(0, 30))
+                                _tf.sleep(0.3)
+                                _got = "".join(c for c in (_l.input_value() or "") if c.isdigit())
+                                _exp = "".join(c for c in value if c.isdigit())
+                                if _exp and (_got == _exp or _got.endswith(_exp)):
+                                    log(f"[{idx+1}] ✓ {fname}: {_got}")
+                                    return True
+                                if not _exp:
+                                    _gv = _l.input_value() or ""
+                                    if _gv.strip():
+                                        log(f"[{idx+1}] ✓ {fname}: {_gv.strip()[:20]}")
+                                        return True
+                                log(f"[{idx+1}] ✗ {fname} hụt got={_got!r} exp={_exp!r}")
+                            except Exception as _fe:
+                                pass
+                        log(f"[{idx+1}] ✗ {fname} fill thất bại")
+                        return False
+
+                    _card_sels = [
+                        'input[placeholder*="1234"]',
+                        'input[autocomplete="cc-number"]',
+                        'input[autocomplete*="cc-number"]',
+                        'input[name="cardNumber"]',
+                        'input[id*="cardNumber" i]',
+                        'input[name="cardnumber"]',
+                    ]
+                    _exp_sels = [
+                        'input[placeholder*="MM / YY" i]',
+                        'input[placeholder*="MM/YY" i]',
+                        'input[autocomplete="cc-exp"]',
+                        'input[autocomplete*="cc-exp"]',
+                        'input[name="cardExpiry"]',
+                        'input[name="exp-date"]',
+                    ]
+                    _cvc_sels = [
+                        'input[placeholder*="CVC" i]',
+                        'input[placeholder*="CVV" i]',
+                        'input[autocomplete="cc-csc"]',
+                        'input[autocomplete*="cc-csc"]',
+                        'input[name="cardCvc"]',
+                        'input[name="cvc"]',
+                    ]
+
+                    _card_ok = _stripe_fill(_card_sels, card_number, "Card number")
+                    sp.wait_for_timeout(400)
+                    _exp_ok  = _stripe_fill(_exp_sels, exp_mmyy, "Expiry")
+                    sp.wait_for_timeout(300)
+                    _cvc_ok  = _stripe_fill(_cvc_sels, cvv, "CVC")
+                    sp.wait_for_timeout(300)
+
+                    # Cardholder name
+                    if cardholder:
+                        _stripe_fill([
+                            'input[name="billingName"]',
+                            'input[autocomplete*="cc-name"]',
+                            'input[placeholder*="Full name on card" i]',
+                            'input[placeholder*="Cardholder" i]',
+                        ], cardholder, "Cardholder")
+                        sp.wait_for_timeout(200)
+
+                    # ZIP
+                    if zip_code:
+                        _stripe_fill([
+                            'input[name="postalCode"]',
+                            'input[autocomplete*="postal-code"]',
+                            'input[placeholder*="ZIP" i]',
+                        ], zip_code, "ZIP")
+                        sp.wait_for_timeout(200)
+
+                    log(f"[{idx+1}] Fill: card={_card_ok} exp={_exp_ok} cvc={_cvc_ok}")
+                    sp.wait_for_timeout(600)
+
+                    # ── Click Pay / Subscribe ─────────────────────────────────
+                    log(f"[{idx+1}] 🖱 Click Pay ...")
+                    _pay_ok = False
+                    for _psel in [
+                        '[data-testid="hosted-payment-submit-button"]',
+                        'button:has-text("Subscribe")',
+                        'button:has-text("Pay")',
+                        'button:has-text("Start trial")',
+                        'button:has-text("Start Trial")',
+                        'button:has-text("Confirm")',
+                        'button[type="submit"]',
+                    ]:
+                        try:
+                            _pl = sp.locator(_psel).first
+                            _pl.wait_for(state="visible", timeout=5000)
+                            _pl.click()
+                            _pay_ok = True
+                            log(f"[{idx+1}] ✓ Click Pay: {_psel}")
+                            break
+                        except Exception:
+                            pass
+                    if not _pay_ok:
+                        log(f"[{idx+1}] ⚠ Không click được Pay — thử JS")
+                        try:
+                            _r = sp.evaluate("""
+                                () => {
+                                    const b = [...document.querySelectorAll('button')].find(b =>
+                                        /pay|subscribe|start trial|confirm/i.test(b.textContent) && !b.disabled
+                                    );
+                                    if(b){ b.click(); return b.textContent.trim(); }
+                                    return null;
+                                }
+                            """)
+                            if _r:
+                                log(f"[{idx+1}] ✓ JS Pay: '{_r}'")
+                                _pay_ok = True
+                        except Exception:
+                            pass
+
+                    # ── Poll kết quả ──────────────────────────────────────────
+                    log(f"[{idx+1}] ⏳ Chờ kết quả payment ...")
+                    import time as _tw
+                    _t0 = _tw.time()
+                    _result_status = "unknown"
+                    _DECLINE_KW = [
+                        "your card was declined", "card was declined", "card declined",
+                        "insufficient funds", "do not honor", "invalid card",
+                        "card number is incorrect", "security code is incorrect",
+                        "expiration date is incorrect",
+                    ]
+                    while _tw.time() - _t0 < 40:
+                        _url = sp.url
+                        if "dashboard" in _url or "success" in _url or "thank" in _url:
+                            _result_status = "success"
+                            log(f"[{idx+1}] ✅ SUCCESS — {_url[:80]}")
+                            break
+                        try:
+                            _ptxt = sp.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''")
+                            if any(_kw in _ptxt for _kw in _DECLINE_KW):
+                                _kw_found = next(k for k in _DECLINE_KW if k in _ptxt)
+                                _result_status = "declined"
+                                log(f"[{idx+1}] ❌ Declined: '{_kw_found}'")
+                                break
+                            if "payment failed" in _ptxt or "unable to process" in _ptxt:
+                                _result_status = "failed"
+                                log(f"[{idx+1}] ❌ Payment failed")
+                                break
+                        except Exception:
+                            pass
+                        sp.wait_for_timeout(1500)
+
+                    if _result_status == "unknown":
+                        log(f"[{idx+1}] ℹ URL cuối: {sp.url[:80]} ({_tw.time()-_t0:.0f}s)")
+
+                    running_tasks[tid]["results"].append({
+                        "email": email,
+                        "card": card_number[:4] + "****" if card_number else "",
+                        "status": _result_status,
+                        "url": sp.url[:100],
+                    })
+                    running_tasks[tid]["done"] = idx + 1
+                    log(f"[{idx+1}] ✓ Xong — {_result_status}")
+
+            except Exception as e:
+                import traceback
+                _tb = traceback.format_exc()
+                log(f"[{idx+1}] ❌ Lỗi: {e}")
+                log(f"[{idx+1}] Traceback: {_tb[-400:]}")
+                running_tasks[tid]["done"] = idx + 1
+                running_tasks[tid]["results"].append({
+                    "email": email if 'email' in dir() else "?",
+                    "status": "error",
+                    "error": str(e),
+                })
+
+    except Exception as e:
+        import traceback
+        push_task_log(tid, f"❌ Lỗi khởi tạo: {e}\n{traceback.format_exc()[-300:]}")
+
+    finally:
+        if tid in running_tasks:
+            running_tasks[tid]["alive"] = False
+            running_tasks[tid]["status"] = "done"
+        push_task_log(tid, "🏁 Script hoàn tất.")
+
 
     def log(msg):
         push_task_log(tid, msg)

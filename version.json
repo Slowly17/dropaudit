@@ -1,5 +1,5 @@
 {
-  "version": "1.4.5",
-  "updated": "2026-06-22",
-  "notes": "Fix OTP/bank popup overlay trong Stripe: detect 'Keep your account safe' → click Continue dismiss → card field re-enable. Applies to both flow 1 and flow 2, during pay poll and during clear+fill wait."
+  "version": "1.4.6",
+  "updated": "2026-06-25",
+  "notes": "Simen.ai script v2: fix popup login modal (inline, not /signup page), fix Stripe new-tab detection via expect_popup(), fix networkidle timeout, rewrite entire flow for both flow1 and flow2."
 }
