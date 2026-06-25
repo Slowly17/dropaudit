@@ -2011,6 +2011,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     """Simen.ai $1 trial — v2: popup login modal + new-tab Stripe + hosted checkout fill."""
     import os, time as _time, random as _rnd, requests as _req
+    from invisible_playwright import InvisiblePlaywright
     if not os.environ.get("DISPLAY"):
         os.environ["DISPLAY"] = ":99"
 
@@ -5923,6 +5924,7 @@ def _run_dropaudit_signup(tid: str, profile: dict, rows: list[dict]):
 def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     """Simen.ai $1 trial — v2: popup login modal + new-tab Stripe + hosted checkout fill."""
     import os, time as _time, random as _rnd, requests as _req
+    from invisible_playwright import InvisiblePlaywright
     if not os.environ.get("DISPLAY"):
         os.environ["DISPLAY"] = ":99"
 

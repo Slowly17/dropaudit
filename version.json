@@ -1,5 +1,5 @@
 {
-  "version": "1.4.6",
+  "version": "1.4.7",
   "updated": "2026-06-25",
-  "notes": "Simen.ai script v2: fix popup login modal (inline, not /signup page), fix Stripe new-tab detection via expect_popup(), fix networkidle timeout, rewrite entire flow for both flow1 and flow2."
+  "notes": "Simen.ai: fix UnboundLocalError — thêm 'from invisible_playwright import InvisiblePlaywright' trong _run_simen_trial (cả flow1 lẫn flow2)."
 }
