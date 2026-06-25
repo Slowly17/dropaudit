@@ -2157,7 +2157,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             _el = page.locator(_esel).first
                             _el.wait_for(state="visible", timeout=3000)
                             # JS click để tránh scroll_into_view timeout trên modal
-                            page.evaluate(f"document.querySelector("{_esel}")?.click()")
+                            _js_sel = _esel.replace("'", "\'")
+                            page.evaluate(f"document.querySelector('{_js_sel}')?.click()")
                             page.wait_for_timeout(200)
                             _el.fill(email)
                             page.wait_for_timeout(200)
@@ -5517,7 +5518,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             _el = page.locator(_esel).first
                             _el.wait_for(state="visible", timeout=3000)
                             # JS click để tránh scroll_into_view timeout trên modal
-                            page.evaluate(f"document.querySelector("{_esel}")?.click()")
+                            _js_sel = _esel.replace("'", "\'")
+                            page.evaluate(f"document.querySelector('{_js_sel}')?.click()")
                             page.wait_for_timeout(200)
                             _el.fill(email)
                             page.wait_for_timeout(200)
