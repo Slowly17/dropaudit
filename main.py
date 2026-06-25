@@ -2108,20 +2108,36 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                     # ── STEP 3: Điền email vào popup modal ───────────────────
                     log(f"[{idx+1}] Điền email vào popup ...")
+                    # Debug: log URL + tất cả input hiện có
+                    _cur_url = page.url
+                    log(f"[{idx+1}] DEBUG URL sau click: {_cur_url}")
+                    try:
+                        _all_inputs = page.evaluate("""() => {
+                            return Array.from(document.querySelectorAll('input')).map(e => ({
+                                type: e.type, name: e.name, placeholder: e.placeholder,
+                                id: e.id, className: e.className.substring(0,60),
+                                visible: e.offsetWidth > 0 && e.offsetHeight > 0
+                            }));
+                        }""")
+                        log(f"[{idx+1}] DEBUG inputs: {_all_inputs}")
+                    except Exception as _de:
+                        log(f"[{idx+1}] DEBUG err: {_de}")
                     _email_ok = False
                     for _esel in [
                         "input[type='email']",
                         "input[name='email']",
                         "input[placeholder*='email' i]",
                         "input[placeholder*='name@example' i]",
+                        "input[type='text']",
+                        "input:not([type='hidden'])",
                     ]:
                         try:
                             _el = page.locator(_esel).first
-                            _el.wait_for(state="visible", timeout=8000)
+                            _el.wait_for(state="visible", timeout=10000)
                             _el.triple_click()
                             _el.type(email, delay=60)
                             _email_ok = True
-                            log(f"[{idx+1}] ✓ Email điền xong")
+                            log(f"[{idx+1}] ✓ Email điền xong ({_esel})")
                             break
                         except Exception:
                             pass
@@ -6021,20 +6037,36 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                     # ── STEP 3: Điền email vào popup modal ───────────────────
                     log(f"[{idx+1}] Điền email vào popup ...")
+                    # Debug: log URL + tất cả input hiện có
+                    _cur_url = page.url
+                    log(f"[{idx+1}] DEBUG URL sau click: {_cur_url}")
+                    try:
+                        _all_inputs = page.evaluate("""() => {
+                            return Array.from(document.querySelectorAll('input')).map(e => ({
+                                type: e.type, name: e.name, placeholder: e.placeholder,
+                                id: e.id, className: e.className.substring(0,60),
+                                visible: e.offsetWidth > 0 && e.offsetHeight > 0
+                            }));
+                        }""")
+                        log(f"[{idx+1}] DEBUG inputs: {_all_inputs}")
+                    except Exception as _de:
+                        log(f"[{idx+1}] DEBUG err: {_de}")
                     _email_ok = False
                     for _esel in [
                         "input[type='email']",
                         "input[name='email']",
                         "input[placeholder*='email' i]",
                         "input[placeholder*='name@example' i]",
+                        "input[type='text']",
+                        "input:not([type='hidden'])",
                     ]:
                         try:
                             _el = page.locator(_esel).first
-                            _el.wait_for(state="visible", timeout=8000)
+                            _el.wait_for(state="visible", timeout=10000)
                             _el.triple_click()
                             _el.type(email, delay=60)
                             _email_ok = True
-                            log(f"[{idx+1}] ✓ Email điền xong")
+                            log(f"[{idx+1}] ✓ Email điền xong ({_esel})")
                             break
                         except Exception:
                             pass

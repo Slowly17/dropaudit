@@ -1,5 +1,5 @@
 {
-  "version": "1.4.8",
+  "version": "1.4.9",
   "updated": "2026-06-25",
-  "notes": "Simen.ai: fix AttributeError _context -> dùng browser.contexts[0]"
+  "notes": "Simen.ai: debug dump URL+inputs sau click trial button; thêm fallback selector input[type=text], tăng timeout 10s"
 }
