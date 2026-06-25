@@ -2065,7 +2065,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                 ip_client = InvisiblePlaywright(**kwargs)
                 with ip_client as browser:
-                    ctx  = browser._context   # playwright context (for popup detection)
+                    ctx  = browser.contexts[0] if browser.contexts else None  # playwright context
                     page = browser.new_page()
                     page.set_default_timeout(30000)
 
@@ -5978,7 +5978,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                 ip_client = InvisiblePlaywright(**kwargs)
                 with ip_client as browser:
-                    ctx  = browser._context   # playwright context (for popup detection)
+                    ctx  = browser.contexts[0] if browser.contexts else None  # playwright context
                     page = browser.new_page()
                     page.set_default_timeout(30000)
 
