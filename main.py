@@ -168,6 +168,12 @@ def increment_proxy_used_by_server(proxy_server: str):
         if matched:
             PROXY_FILE.write_text(json.dumps(d, indent=2))
 
+def flag_proxy_captcha(proxy_id: str):
+    """Mark proxy captcha_blocked and remove from rotation."""
+    if not proxy_id:
+        return
+    update_proxy_fields(proxy_id, {"captcha_blocked": True, "alive": False})
+
 # round-robin index cho automation
 _proxy_rr_index = 0
 _proxy_rr_lock  = threading.Lock()
@@ -2051,6 +2057,23 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
     else:
         log("⚠ Profile không có proxy — chạy IP trực tiếp")
 
+    # Tìm proxy ID trong pool để flag captcha sau này
+    _simen_px_id = ""
+    if _proxy_server:
+        try:
+            import re as _re_px
+            _mpx = _re_px.search(r'[/@]([^/@:]+):(\d+)', _proxy_server) or \
+                   _re_px.search(r'://([^:@/]+):(\d+)', _proxy_server)
+            if _mpx:
+                _phx, _ppx = _mpx.group(1), int(_mpx.group(2))
+                _pdx = load_proxies()
+                for _pxi in _pdx.get("proxies", []):
+                    if _pxi.get("host") == _phx and int(_pxi.get("port", 0)) == _ppx:
+                        _simen_px_id = str(_pxi.get("id", ""))
+                        break
+        except Exception:
+            pass
+
     total = len(rows)
     log(f"Bắt đầu — {total} hàng")
 
@@ -2547,6 +2570,48 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                     log(f"[{idx+1}] Fill: card={_card_ok} exp={_exp_ok} cvc={_cvc_ok}")
                     sp.wait_for_timeout(600)
 
+                    # ── Phone number (US random) ──────────────────────────────
+                    import random as _random
+                    _area_codes = ['201','202','212','213','214','215','312','313','404','408',
+                                   '415','503','512','602','617','702','713','818','917','206']
+                    _phone = f"({_random.choice(_area_codes)}) {_random.randint(200,999)}-{_random.randint(1000,9999)}"
+                    log(f"[{idx+1}] 📱 Điền phone: {_phone}")
+                    _phone_filled = False
+                    # Thử main page (sp) trước
+                    try:
+                        _ph_result = sp.evaluate("""
+                            () => {
+                                const inp = document.querySelector(
+                                    'input[name="phoneNumber"], input[type="tel"], input[placeholder*="201"]'
+                                );
+                                if (inp) { inp.focus(); inp.value = ''; inp.dispatchEvent(new Event('input', {bubbles:true})); return 'found'; }
+                                return 'not_found';
+                            }
+                        """)
+                        if _ph_result == 'found':
+                            _ph_el = sp.query_selector('input[name="phoneNumber"], input[type="tel"], input[placeholder*="201"]')
+                            if _ph_el:
+                                _ph_el.click(); _ph_el.fill(''); _ph_el.type(_phone, delay=60)
+                                log(f"[{idx+1}] ✓ Phone filled (main page)")
+                                _phone_filled = True
+                    except Exception as _pe:
+                        log(f"[{idx+1}] phone main err: {_pe}")
+                    # Scan frames nếu chưa được
+                    if not _phone_filled:
+                        for _phf in sp.frames:
+                            try:
+                                _ph_inp = _phf.query_selector('input[name="phoneNumber"], input[type="tel"]')
+                                if _ph_inp:
+                                    _ph_inp.click(); _ph_inp.fill(''); _ph_inp.type(_phone, delay=60)
+                                    log(f"[{idx+1}] ✓ Phone filled (frame: {_phf.url[:50]})")
+                                    _phone_filled = True
+                                    break
+                            except Exception:
+                                pass
+                    if not _phone_filled:
+                        log(f"[{idx+1}] ⚠ Không điền được phone — tiếp tục")
+                    sp.wait_for_timeout(800)
+
                     # ── Click Pay / Subscribe ─────────────────────────────────
                     log(f"[{idx+1}] 🖱 Click Pay ...")
                     _pay_ok = False
@@ -2586,40 +2651,352 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         except Exception:
                             pass
 
-                    # ── Poll kết quả ──────────────────────────────────────────
-                    log(f"[{idx+1}] ⏳ Chờ kết quả payment ...")
+                    # ── Smart Poll kết quả ────────────────────────────────────
                     import time as _tw
-                    _t0 = _tw.time()
-                    _result_status = "unknown"
-                    _DECLINE_KW = [
-                        "your card was declined", "card was declined", "card declined",
-                        "insufficient funds", "do not honor", "invalid card",
-                        "card number is incorrect", "security code is incorrect",
-                        "expiration date is incorrect",
-                    ]
-                    while _tw.time() - _t0 < 40:
-                        _url = sp.url
-                        if "dashboard" in _url or "success" in _url or "thank" in _url:
-                            _result_status = "success"
-                            log(f"[{idx+1}] ✅ SUCCESS — {_url[:80]}")
-                            break
-                        try:
-                            _ptxt = sp.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''")
-                            if any(_kw in _ptxt for _kw in _DECLINE_KW):
-                                _kw_found = next(k for k in _DECLINE_KW if k in _ptxt)
-                                _result_status = "declined"
-                                log(f"[{idx+1}] ❌ Declined: '{_kw_found}'")
-                                break
-                            if "payment failed" in _ptxt or "unable to process" in _ptxt:
-                                _result_status = "failed"
-                                log(f"[{idx+1}] ❌ Payment failed")
-                                break
-                        except Exception:
-                            pass
-                        sp.wait_for_timeout(1500)
 
-                    if _result_status == "unknown":
-                        log(f"[{idx+1}] ℹ URL cuối: {sp.url[:80]} ({_tw.time()-_t0:.0f}s)")
+                    _DECLINE_KEYWORDS_S = [
+                        "your card was declined",
+                        "card was declined",
+                        "card has been declined",
+                        "do not honor",
+                        "insufficient funds",
+                    ]
+                    _FAIL_KEYWORDS_S = [
+                        "payment attempt failed",
+                        "payment failed",
+                    ]
+
+                    def _sget_page_text():
+                        _texts = []
+                        try: _texts.append(sp.inner_text('body').lower())
+                        except Exception: pass
+                        for _sf in sp.frames:
+                            try:
+                                _sfu = _sf.url or ''
+                                if 'hcaptcha.com' in _sfu: continue
+                                _texts.append(_sf.inner_text('body').lower())
+                            except Exception: pass
+                        return " ".join(_texts)
+
+                    def _sis_success_url():
+                        try:
+                            _su = sp.url
+                            return (
+                                'checkout.stripe.com' not in _su
+                                and 'stripe.com' not in _su
+                                and _su.startswith('http')
+                            )
+                        except Exception: return False
+
+                    def _sget_hcaptcha_frames():
+                        return [_sfr for _sfr in sp.frames if _sfr.url and 'hcaptcha.com' in _sfr.url]
+
+                    def _sget_challenge_frames():
+                        return [_sfr for _sfr in _sget_hcaptcha_frames() if 'challenge' in _sfr.url]
+
+                    def _sget_widget_frames():
+                        return [_sfr for _sfr in _sget_hcaptcha_frames() if 'challenge' not in _sfr.url]
+
+                    def _sget_3ds_frames():
+                        _otp_urls = ['3ds', 'acs', 'authentication', 'secure', 'challenge', 'otp',
+                                     'netcetera', 'orbipay', 'verifiedbyvisa', 'mastercardsecurecode']
+                        _sresults = []
+                        for _sf in sp.frames:
+                            try:
+                                _sfu = (_sf.url or '').lower()
+                                if not _sfu or _sfu in ('about:blank', ''): continue
+                                if 'hcaptcha.com' in _sfu: continue
+                                if 'stripe.com' in _sfu:
+                                    if not any(kw in _sfu for kw in _otp_urls): continue
+                                else:
+                                    if not any(kw in _sfu for kw in _otp_urls): continue
+                                _sresults.append(_sf)
+                            except Exception: pass
+                        try:
+                            _overlay = sp.evaluate("""
+                                () => {
+                                    const body = (document.body && document.body.innerText) ? document.body.innerText.toLowerCase() : '';
+                                    const kws = ['verify your transaction','verify your identity',
+                                                 'authentication required','3d secure','secure authentication',
+                                                 'card verification','confirm your identity'];
+                                    return kws.some(k => body.includes(k));
+                                }
+                            """)
+                            if _overlay and not _sresults:
+                                return [sp.main_frame]
+                        except Exception: pass
+                        return _sresults
+
+                    def _stry_click_captcha_widget():
+                        for _sfr in _sget_widget_frames():
+                            try:
+                                _sr = _sfr.evaluate("""
+                                    () => {
+                                        const chk = document.querySelector('#checkbox, .hcaptcha-checkbox, input[type="checkbox"]');
+                                        if (chk) { chk.click(); return 'clicked'; }
+                                        const anchor = document.querySelector('#anchor, .anchor, [role="checkbox"], [aria-checked]');
+                                        if (anchor) { anchor.click(); return 'anchor_clicked'; }
+                                        return 'not_found';
+                                    }
+                                """)
+                                if _sr in ('clicked', 'anchor_clicked'):
+                                    return True
+                            except Exception: pass
+                        return False
+
+                    # ── Card retry outer loop (tối đa 5 thẻ) ──────────────────────────────
+                    _scard_attempt = 0
+                    while True:
+                        _scard_attempt += 1
+
+                        log(f"[{idx+1}] 🔄 Smart poll sau Pay (đợi kết quả)...")
+                        sp.wait_for_timeout(1000)
+
+                        _s_pay_success    = False
+                        _s_card_declined  = False
+                        _s_payment_failed = False
+                        _s_otp_required   = False
+                        _s_captcha_blocked = False
+                        _s_captcha_clicked = False
+                        _s_captcha_click_t = None
+                        _s_poll_t0 = _tw.time()
+                        _s_last_log_t = _s_poll_t0
+                        _CAPTCHA_BLOCK_AFTER_S = 25.0
+
+                        while True:
+                            sp.wait_for_timeout(800)
+                            _s_elapsed = _tw.time() - _s_poll_t0
+
+                            if _tw.time() - _s_last_log_t >= 10.0:
+                                _shc = _sget_hcaptcha_frames()
+                                log(f"[{idx+1}] ⏳ Poll {_s_elapsed:.0f}s — {'captcha widget' if _shc else 'chờ Stripe'}...")
+                                _s_last_log_t = _tw.time()
+
+                            # 0. OTP/3DS
+                            _s3ds = _sget_3ds_frames()
+                            if not _s_otp_required and _s3ds:
+                                log(f"[{idx+1}] 🔐 OTP/3DS popup ({_s3ds[0].url[:60]}) ({_s_elapsed:.1f}s)")
+                                _s_otp_required = True
+                                break
+                            try:
+                                _s_visa = sp.evaluate("""
+                                    () => {
+                                        const m = document.querySelector(
+                                            'iframe[src*="acs"], iframe[src*="3ds"], iframe[src*="authentication"], '
+                                            + 'iframe[src*="secure"], iframe[src*="otp"], iframe[src*="challenge"]'
+                                        );
+                                        return m ? m.src : null;
+                                    }
+                                """)
+                                if _s_visa and not _s_otp_required:
+                                    log(f"[{idx+1}] 🔐 OTP iframe DOM: {str(_s_visa)[:60]} ({_s_elapsed:.1f}s)")
+                                    _s_otp_required = True
+                                    break
+                            except Exception: pass
+
+                            # 0b. Bank OTP overlay
+                            try:
+                                _s_bp = sp.evaluate("""
+                                    () => {
+                                        const t = document.body ? document.body.innerText : '';
+                                        return t.includes('Keep your account safe')
+                                            || t.includes('one time code')
+                                            || t.includes('verification code');
+                                    }
+                                """)
+                                if _s_bp and not _s_otp_required:
+                                    log(f"[{idx+1}] 🏦 Bank OTP overlay — click CONTINUE ({_s_elapsed:.1f}s)")
+                                    _s_dismissed = False
+                                    for _sbs in [
+                                        "button.ButtonElement:has-text('CONTINUE')",
+                                        "button:has-text('CONTINUE')",
+                                        "button[type='submit']:has-text('CONTINUE')",
+                                        "button:has-text('Continue'):not(:has-text('Link'))",
+                                    ]:
+                                        try:
+                                            _sbl = sp.locator(_sbs).first
+                                            _sbl.wait_for(state="visible", timeout=1500)
+                                            _sbl.click()
+                                            _s_dismissed = True
+                                            log(f"[{idx+1}] ✓ Dismissed bank popup — tiếp tục poll")
+                                            sp.wait_for_timeout(1500)
+                                            break
+                                        except Exception: pass
+                                    if not _s_dismissed:
+                                        log(f"[{idx+1}] ⚠ Bank popup nhưng không dismiss được → OTP required")
+                                        _s_otp_required = True
+                                        break
+                            except Exception: pass
+
+                            # 1. Declined text
+                            _stxt = _sget_page_text()
+                            if any(kw in _stxt for kw in _DECLINE_KEYWORDS_S):
+                                _skw = next(k for k in _DECLINE_KEYWORDS_S if k in _stxt)
+                                log(f"[{idx+1}] ❌ Declined: '{_skw}' ({_s_elapsed:.1f}s)")
+                                _s_card_declined = True
+                                break
+
+                            # 2. Payment failed
+                            if any(kw in _stxt for kw in _FAIL_KEYWORDS_S):
+                                log(f"[{idx+1}] ⚠ Payment failed ({_s_elapsed:.1f}s)")
+                                _s_payment_failed = True
+                                break
+
+                            # 3. Success URL
+                            if _sis_success_url():
+                                log(f"[{idx+1}] ✅ Redirect → {sp.url[:80]} ({_s_elapsed:.1f}s)")
+                                _s_pay_success = True
+                                break
+
+                            # 4. hCaptcha widget
+                            _swf = _sget_widget_frames()
+                            _sch = _sget_challenge_frames()
+                            if _swf and not _s_captcha_clicked:
+                                if _stry_click_captcha_widget():
+                                    log(f"[{idx+1}] ✓ hCaptcha clicked ({_s_elapsed:.1f}s) — tiếp tục poll")
+                                    _s_captcha_clicked = True
+                                    _s_captcha_click_t = _tw.time()
+
+                            # 5. Challenge frame
+                            elif _sch:
+                                if _s_captcha_click_t and (_tw.time() - _s_captcha_click_t > _CAPTCHA_BLOCK_AFTER_S):
+                                    log(f"[{idx+1}] 🚫 Challenge vẫn còn {_CAPTCHA_BLOCK_AFTER_S:.0f}s sau click → captcha_blocked")
+                                    _s_captcha_blocked = True
+                                    break
+                                elif not _s_captcha_click_t:
+                                    if _stry_click_captcha_widget():
+                                        log(f"[{idx+1}] ✓ hCaptcha clicked (retry) ({_s_elapsed:.1f}s)")
+                                        _s_captcha_clicked = True
+                                        _s_captcha_click_t = _tw.time()
+
+                        # ── Xử lý kết quả + Card retry ───────────────────────────────────────
+                        if _s_otp_required:
+                            _result_status = "otp_3ds"
+                            log(f"[{idx+1}] \U0001f510 OTP/3DS required \u2014 {sp.url[:80]}")
+                            try:
+                                save_declined_record(
+                                    email, card_number, "OTP/3DS required", cardholder,
+                                    exp_month=exp_mmyy[:2], exp_year="20"+exp_mmyy[2:],
+                                    cvv=cvv
+                                )
+                            except Exception as _ore: log(f"[{idx+1}] \u26a0 ghi OTP record: {_ore}")
+                            break
+
+                        elif _s_captcha_blocked:
+                            _result_status = "captcha_blocked"
+                            log(f"[{idx+1}] \U0001f6ab Captcha blocked \u2014 log frames & flag proxy")
+                            for _hcf in _sget_hcaptcha_frames():
+                                log(f"[{idx+1}]   hcaptcha frame: {_hcf.url}")
+                            for _chf in _sget_challenge_frames():
+                                log(f"[{idx+1}]   challenge frame: {_chf.url}")
+                            if _simen_px_id:
+                                try: flag_proxy_captcha(_simen_px_id)
+                                except Exception as _fpe: log(f"[{idx+1}] \u26a0 flag_proxy_captcha: {_fpe}")
+                            log(f"[{idx+1}] \U0001f512 Gi\u1eef browser s\u1ed1ng \u2014 nh\u1ea5n Stop \u0111\u1ec3 k\u1ebft th\xfac")
+                            while running_tasks.get(tid, {}).get("alive", False):
+                                sp.wait_for_timeout(2000)
+                            break
+
+                        elif _s_pay_success:
+                            _result_status = "success"
+                            log(f"[{idx+1}] \u2705 Thanh to\xe1n th\xe0nh c\xf4ng!")
+                            try:
+                                save_success_record(
+                                    email, card_number, "simen_trial", cardholder,
+                                    exp_month=exp_mmyy[:2], exp_year="20"+exp_mmyy[2:],
+                                    cvv=cvv
+                                )
+                            except Exception as _sre: log(f"[{idx+1}] \u26a0 ghi success record: {_sre}")
+                            break
+
+                        elif _s_card_declined:
+                            try:
+                                save_declined_record(
+                                    email, card_number, "Your card was declined", cardholder,
+                                    exp_month=exp_mmyy[:2], exp_year="20"+exp_mmyy[2:],
+                                    cvv=cvv
+                                )
+                            except Exception as _dre: log(f"[{idx+1}] \u26a0 ghi declined record: {_dre}")
+                            if _scard_attempt >= 5:
+                                _result_status = "declined"
+                                log(f"[{idx+1}] \u274c \u0110\xe3 th\u1eed {_scard_attempt} th\u1ebb \u2014 d\u1eebng")
+                                break
+                            _next_card_row = queue_pop()
+                            if not _next_card_row:
+                                _result_status = "declined"
+                                log(f"[{idx+1}] \u274c Declined & kh\xf4ng c\xf2n th\u1ebb trong queue")
+                                break
+                            _nc_num    = _next_card_row.get("card_number", "").strip().replace(" ", "")
+                            _nc_exp    = _next_card_row.get("exp_month", "").strip().zfill(2) + _next_card_row.get("exp_year", "")[-2:]
+                            _nc_cvv    = _next_card_row.get("cvv", "").strip()
+                            _nc_holder = _next_card_row.get("cardholder_name", "").strip() or cardholder
+                            if not _nc_num:
+                                _result_status = "declined"
+                                log(f"[{idx+1}] \u274c Th\u1ebb k\u1ebf ti\u1ebfp kh\xf4ng c\xf3 s\u1ed1 \u2014 d\u1eebng")
+                                break
+                            log(f"[{idx+1}] \U0001f504 Th\u1eed th\u1ebb th\u1ee9 {_scard_attempt+1}: {_nc_num[:4]}**** (l\u1ea7n {_scard_attempt+1}/5)")
+                            card_number = _nc_num; exp_mmyy = _nc_exp; cvv = _nc_cvv; cardholder = _nc_holder
+                            # Refill Stripe
+                            _stripe_fill(_card_sels, card_number, "Card number")
+                            sp.wait_for_timeout(400)
+                            _stripe_fill(_exp_sels, exp_mmyy, "Expiry")
+                            sp.wait_for_timeout(300)
+                            _stripe_fill(_cvc_sels, cvv, "CVC")
+                            sp.wait_for_timeout(300)
+                            if cardholder:
+                                _stripe_fill([
+                                    'input[name="billingName"]',
+                                    'input[autocomplete*="cc-name"]',
+                                    'input[placeholder*="Full name on card" i]',
+                                    'input[placeholder*="Cardholder" i]',
+                                ], cardholder, "Cardholder")
+                                sp.wait_for_timeout(200)
+                            # Refill phone
+                            _rph = f"({_random.choice(_area_codes)}) {_random.randint(200,999)}-{_random.randint(1000,9999)}"
+                            log(f"[{idx+1}] \U0001f4f1 Phone (retry): {_rph}")
+                            try:
+                                _rph_r = sp.evaluate(
+                                    "() => { const i = document.querySelector("
+                                    "'input[name=\'phoneNumber\'],input[type=\'tel\']');"
+                                    " if(i){i.focus();i.value='';i.dispatchEvent(new Event('input',{bubbles:true}));return 'found';}"
+                                    " return 'not_found'; }"
+                                )
+                                if _rph_r == 'found':
+                                    _rph_el = sp.query_selector("input[name='phoneNumber'],input[type='tel']")
+                                    if _rph_el:
+                                        _rph_el.click(); _rph_el.fill(''); _rph_el.type(_rph, delay=60)
+                            except Exception: pass
+                            # Re-click Pay
+                            for _rpsel in [
+                                '[data-testid="hosted-payment-submit-button"]',
+                                'button:has-text("Subscribe")', 'button:has-text("Pay")',
+                                'button:has-text("Start trial")', 'button:has-text("Confirm")',
+                                'button[type="submit"]',
+                            ]:
+                                try:
+                                    _rpl = sp.locator(_rpsel).first
+                                    _rpl.wait_for(state="visible", timeout=5000)
+                                    _rpl.click()
+                                    log(f"[{idx+1}] \u2713 Re-click Pay: {_rpsel}")
+                                    break
+                                except Exception: pass
+                            # Reset flags + re-run outer-while → inner poll
+                            sp.wait_for_timeout(1000)
+                            _s_pay_success = _s_card_declined = _s_payment_failed = False
+                            _s_otp_required = _s_captcha_blocked = False
+                            _s_captcha_clicked = False; _s_captcha_click_t = None
+                            _s_poll_t0 = _tw.time(); _s_last_log_t = _s_poll_t0
+                            continue  # outer while ─ re-run inner poll
+
+                        elif _s_payment_failed:
+                            _result_status = "failed"
+                            log(f"[{idx+1}] \u274c Payment failed")
+                            break
+
+                        else:
+                            _result_status = "unknown"
+                            log(f"[{idx+1}] \u2139 URL cu\u1ed1i: {sp.url[:80]} ({_tw.time()-_s_poll_t0:.0f}s)")
+                            break
 
                     running_tasks[tid]["results"].append({
                         "email": email,
@@ -2628,7 +3005,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         "url": sp.url[:100],
                     })
                     running_tasks[tid]["done"] = idx + 1
-                    log(f"[{idx+1}] ✓ Xong — {_result_status}")
+                    log(f"[{idx+1}] \u2713 Xong \u2014 {_result_status}")
+
 
             except Exception as e:
                 import traceback
@@ -6047,40 +6425,264 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         except Exception:
                             pass
 
-                    # ── Poll kết quả ──────────────────────────────────────────
-                    log(f"[{idx+1}] ⏳ Chờ kết quả payment ...")
+                    # ── Smart Poll kết quả ────────────────────────────────────
                     import time as _tw
-                    _t0 = _tw.time()
-                    _result_status = "unknown"
-                    _DECLINE_KW = [
-                        "your card was declined", "card was declined", "card declined",
-                        "insufficient funds", "do not honor", "invalid card",
-                        "card number is incorrect", "security code is incorrect",
-                        "expiration date is incorrect",
+
+                    _DECLINE_KEYWORDS_S = [
+                        "your card was declined",
+                        "card was declined",
+                        "card has been declined",
+                        "do not honor",
+                        "insufficient funds",
                     ]
-                    while _tw.time() - _t0 < 40:
-                        _url = sp.url
-                        if "dashboard" in _url or "success" in _url or "thank" in _url:
-                            _result_status = "success"
-                            log(f"[{idx+1}] ✅ SUCCESS — {_url[:80]}")
+                    _FAIL_KEYWORDS_S = [
+                        "payment attempt failed",
+                        "payment failed",
+                    ]
+
+                    def _sget_page_text():
+                        _texts = []
+                        try: _texts.append(sp.inner_text('body').lower())
+                        except Exception: pass
+                        for _sf in sp.frames:
+                            try:
+                                _sfu = _sf.url or ''
+                                if 'hcaptcha.com' in _sfu: continue
+                                _texts.append(_sf.inner_text('body').lower())
+                            except Exception: pass
+                        return " ".join(_texts)
+
+                    def _sis_success_url():
+                        try:
+                            _su = sp.url
+                            return (
+                                'checkout.stripe.com' not in _su
+                                and 'stripe.com' not in _su
+                                and _su.startswith('http')
+                            )
+                        except Exception: return False
+
+                    def _sget_hcaptcha_frames():
+                        return [_sfr for _sfr in sp.frames if _sfr.url and 'hcaptcha.com' in _sfr.url]
+
+                    def _sget_challenge_frames():
+                        return [_sfr for _sfr in _sget_hcaptcha_frames() if 'challenge' in _sfr.url]
+
+                    def _sget_widget_frames():
+                        return [_sfr for _sfr in _sget_hcaptcha_frames() if 'challenge' not in _sfr.url]
+
+                    def _sget_3ds_frames():
+                        _otp_urls = ['3ds', 'acs', 'authentication', 'secure', 'challenge', 'otp',
+                                     'netcetera', 'orbipay', 'verifiedbyvisa', 'mastercardsecurecode']
+                        _sresults = []
+                        for _sf in sp.frames:
+                            try:
+                                _sfu = (_sf.url or '').lower()
+                                if not _sfu or _sfu in ('about:blank', ''): continue
+                                if 'hcaptcha.com' in _sfu: continue
+                                if 'stripe.com' in _sfu:
+                                    if not any(kw in _sfu for kw in _otp_urls): continue
+                                else:
+                                    if not any(kw in _sfu for kw in _otp_urls): continue
+                                _sresults.append(_sf)
+                            except Exception: pass
+                        try:
+                            _overlay = sp.evaluate("""
+                                () => {
+                                    const body = (document.body && document.body.innerText) ? document.body.innerText.toLowerCase() : '';
+                                    const kws = ['verify your transaction','verify your identity',
+                                                 'authentication required','3d secure','secure authentication',
+                                                 'card verification','confirm your identity'];
+                                    return kws.some(k => body.includes(k));
+                                }
+                            """)
+                            if _overlay and not _sresults:
+                                return [sp.main_frame]
+                        except Exception: pass
+                        return _sresults
+
+                    def _stry_click_captcha_widget():
+                        for _sfr in _sget_widget_frames():
+                            try:
+                                _sr = _sfr.evaluate("""
+                                    () => {
+                                        const chk = document.querySelector('#checkbox, .hcaptcha-checkbox, input[type="checkbox"]');
+                                        if (chk) { chk.click(); return 'clicked'; }
+                                        const anchor = document.querySelector('#anchor, .anchor, [role="checkbox"], [aria-checked]');
+                                        if (anchor) { anchor.click(); return 'anchor_clicked'; }
+                                        return 'not_found';
+                                    }
+                                """)
+                                if _sr in ('clicked', 'anchor_clicked'):
+                                    return True
+                            except Exception: pass
+                        return False
+
+                    log(f"[{idx+1}] 🔄 Smart poll sau Pay (đợi kết quả)...")
+                    sp.wait_for_timeout(1000)
+
+                    _s_pay_success    = False
+                    _s_card_declined  = False
+                    _s_payment_failed = False
+                    _s_otp_required   = False
+                    _s_captcha_blocked = False
+                    _s_captcha_clicked = False
+                    _s_captcha_click_t = None
+                    _s_poll_t0 = _tw.time()
+                    _s_last_log_t = _s_poll_t0
+                    _CAPTCHA_BLOCK_AFTER_S = 25.0
+
+                    while True:
+                        sp.wait_for_timeout(800)
+                        _s_elapsed = _tw.time() - _s_poll_t0
+
+                        if _tw.time() - _s_last_log_t >= 10.0:
+                            _shc = _sget_hcaptcha_frames()
+                            log(f"[{idx+1}] ⏳ Poll {_s_elapsed:.0f}s — {'captcha widget' if _shc else 'chờ Stripe'}...")
+                            _s_last_log_t = _tw.time()
+
+                        # 0. OTP/3DS
+                        _s3ds = _sget_3ds_frames()
+                        if not _s_otp_required and _s3ds:
+                            log(f"[{idx+1}] 🔐 OTP/3DS popup ({_s3ds[0].url[:60]}) ({_s_elapsed:.1f}s)")
+                            _s_otp_required = True
                             break
                         try:
-                            _ptxt = sp.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''")
-                            if any(_kw in _ptxt for _kw in _DECLINE_KW):
-                                _kw_found = next(k for k in _DECLINE_KW if k in _ptxt)
-                                _result_status = "declined"
-                                log(f"[{idx+1}] ❌ Declined: '{_kw_found}'")
+                            _s_visa = sp.evaluate("""
+                                () => {
+                                    const m = document.querySelector(
+                                        'iframe[src*="acs"], iframe[src*="3ds"], iframe[src*="authentication"], '
+                                        + 'iframe[src*="secure"], iframe[src*="otp"], iframe[src*="challenge"]'
+                                    );
+                                    return m ? m.src : null;
+                                }
+                            """)
+                            if _s_visa and not _s_otp_required:
+                                log(f"[{idx+1}] 🔐 OTP iframe DOM: {str(_s_visa)[:60]} ({_s_elapsed:.1f}s)")
+                                _s_otp_required = True
                                 break
-                            if "payment failed" in _ptxt or "unable to process" in _ptxt:
-                                _result_status = "failed"
-                                log(f"[{idx+1}] ❌ Payment failed")
-                                break
-                        except Exception:
-                            pass
-                        sp.wait_for_timeout(1500)
+                        except Exception: pass
 
-                    if _result_status == "unknown":
-                        log(f"[{idx+1}] ℹ URL cuối: {sp.url[:80]} ({_tw.time()-_t0:.0f}s)")
+                        # 0b. Bank OTP overlay
+                        try:
+                            _s_bp = sp.evaluate("""
+                                () => {
+                                    const t = document.body ? document.body.innerText : '';
+                                    return t.includes('Keep your account safe')
+                                        || t.includes('one time code')
+                                        || t.includes('verification code');
+                                }
+                            """)
+                            if _s_bp and not _s_otp_required:
+                                log(f"[{idx+1}] 🏦 Bank OTP overlay — click CONTINUE ({_s_elapsed:.1f}s)")
+                                _s_dismissed = False
+                                for _sbs in [
+                                    "button.ButtonElement:has-text('CONTINUE')",
+                                    "button:has-text('CONTINUE')",
+                                    "button[type='submit']:has-text('CONTINUE')",
+                                    "button:has-text('Continue'):not(:has-text('Link'))",
+                                ]:
+                                    try:
+                                        _sbl = sp.locator(_sbs).first
+                                        _sbl.wait_for(state="visible", timeout=1500)
+                                        _sbl.click()
+                                        _s_dismissed = True
+                                        log(f"[{idx+1}] ✓ Dismissed bank popup — tiếp tục poll")
+                                        sp.wait_for_timeout(1500)
+                                        break
+                                    except Exception: pass
+                                if not _s_dismissed:
+                                    log(f"[{idx+1}] ⚠ Bank popup nhưng không dismiss được → OTP required")
+                                    _s_otp_required = True
+                                    break
+                        except Exception: pass
+
+                        # 1. Declined text
+                        _stxt = _sget_page_text()
+                        if any(kw in _stxt for kw in _DECLINE_KEYWORDS_S):
+                            _skw = next(k for k in _DECLINE_KEYWORDS_S if k in _stxt)
+                            log(f"[{idx+1}] ❌ Declined: '{_skw}' ({_s_elapsed:.1f}s)")
+                            _s_card_declined = True
+                            break
+
+                        # 2. Payment failed
+                        if any(kw in _stxt for kw in _FAIL_KEYWORDS_S):
+                            log(f"[{idx+1}] ⚠ Payment failed ({_s_elapsed:.1f}s)")
+                            _s_payment_failed = True
+                            break
+
+                        # 3. Success URL
+                        if _sis_success_url():
+                            log(f"[{idx+1}] ✅ Redirect → {sp.url[:80]} ({_s_elapsed:.1f}s)")
+                            _s_pay_success = True
+                            break
+
+                        # 4. hCaptcha widget
+                        _swf = _sget_widget_frames()
+                        _sch = _sget_challenge_frames()
+                        if _swf and not _s_captcha_clicked:
+                            if _stry_click_captcha_widget():
+                                log(f"[{idx+1}] ✓ hCaptcha clicked ({_s_elapsed:.1f}s) — tiếp tục poll")
+                                _s_captcha_clicked = True
+                                _s_captcha_click_t = _tw.time()
+
+                        # 5. Challenge frame
+                        elif _sch:
+                            if _s_captcha_click_t and (_tw.time() - _s_captcha_click_t > _CAPTCHA_BLOCK_AFTER_S):
+                                log(f"[{idx+1}] 🚫 Challenge vẫn còn {_CAPTCHA_BLOCK_AFTER_S:.0f}s sau click → captcha_blocked")
+                                _s_captcha_blocked = True
+                                break
+                            elif not _s_captcha_click_t:
+                                if _stry_click_captcha_widget():
+                                    log(f"[{idx+1}] ✓ hCaptcha clicked (retry) ({_s_elapsed:.1f}s)")
+                                    _s_captcha_clicked = True
+                                    _s_captcha_click_t = _tw.time()
+
+                    # ── Xử lý kết quả ────────────────────────────────────────
+                    if _s_otp_required:
+                        _result_status = "otp_3ds"
+                        log(f"[{idx+1}] 🔐 OTP/3DS required — {sp.url[:80]}")
+                        try:
+                            save_declined_record(
+                                email, card_number, "OTP/3DS required", cardholder,
+                                exp_month=exp_mmyy[:2], exp_year="20"+exp_mmyy[2:],
+                                cvv=cvv
+                            )
+                        except Exception as _ore: log(f"[{idx+1}] ⚠ ghi OTP record: {_ore}")
+
+                    elif _s_captcha_blocked:
+                        _result_status = "captcha_blocked"
+                        log(f"[{idx+1}] 🚫 Captcha blocked")
+
+                    elif _s_pay_success:
+                        _result_status = "success"
+                        log(f"[{idx+1}] ✅ Thanh toán thành công!")
+                        try:
+                            save_success_record(
+                                email, card_number, "simen_trial", cardholder,
+                                exp_month=exp_mmyy[:2], exp_year="20"+exp_mmyy[2:],
+                                cvv=cvv
+                            )
+                        except Exception as _sre: log(f"[{idx+1}] ⚠ ghi success record: {_sre}")
+
+                    elif _s_card_declined:
+                        _result_status = "declined"
+                        log(f"[{idx+1}] ❌ Card declined")
+                        try:
+                            save_declined_record(
+                                email, card_number, "Your card was declined", cardholder,
+                                exp_month=exp_mmyy[:2], exp_year="20"+exp_mmyy[2:],
+                                cvv=cvv
+                            )
+                        except Exception as _dre: log(f"[{idx+1}] ⚠ ghi declined record: {_dre}")
+
+                    elif _s_payment_failed:
+                        _result_status = "failed"
+                        log(f"[{idx+1}] ❌ Payment failed")
+
+                    else:
+                        _result_status = "unknown"
+                        log(f"[{idx+1}] ℹ URL cuối: {sp.url[:80]} ({_tw.time()-_s_poll_t0:.0f}s)")
 
                     running_tasks[tid]["results"].append({
                         "email": email,

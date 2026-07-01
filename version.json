@@ -1,5 +1,5 @@
 {
-  "version": "1.6.2",
-  "updated": "2026-06-25",
-  "notes": "v1.6.1: fix null proxy fields (or "" thay vì default)"
+  "version": "1.6.3",
+  "updated": "2026-07-01",
+  "notes": "v1.6.3: simen_trial card retry on declined (max 5), captcha_blocked keep browser alive + flag proxy"
 }
