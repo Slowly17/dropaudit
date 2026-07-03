@@ -2871,8 +2871,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                         # ── Xử lý kết quả + Card retry ───────────────────────────────────────
                         if _s_otp_required:
-                            _result_status = "otp_3ds"
-                            log(f"[{idx+1}] \U0001f510 OTP/3DS required \u2014 {sp.url[:80]}")
+                            log(f"[{idx+1}] \U0001f510 OTP/3DS required \u2014 {sp.url[:80]} \u2014 note th\u1ebb & F5 l\u1ea5y th\u1ebb k\u1ebf")
                             try:
                                 save_declined_record(
                                     email, card_number, "OTP/3DS required", cardholder,
@@ -2880,7 +2879,83 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                     cvv=cvv
                                 )
                             except Exception as _ore: log(f"[{idx+1}] \u26a0 ghi OTP record: {_ore}")
-                            break
+                            if _scard_attempt >= 5:
+                                _result_status = "otp_3ds"
+                                log(f"[{idx+1}] \u274c \u0110\xe3 th\u1eed {_scard_attempt} th\u1ebb (OTP) \u2014 d\u1eebng")
+                                break
+                            _next_otp_row = queue_pop()
+                            if not _next_otp_row:
+                                _result_status = "otp_3ds"
+                                log(f"[{idx+1}] \u274c OTP & kh\xf4ng c\xf2n th\u1ebb trong queue")
+                                break
+                            _no_num    = _next_otp_row.get("card_number", "").strip().replace(" ", "")
+                            _no_exp    = _next_otp_row.get("exp_month", "").strip().zfill(2) + _next_otp_row.get("exp_year", "")[-2:]
+                            _no_cvv    = _next_otp_row.get("cvv", "").strip()
+                            _no_holder = _next_otp_row.get("cardholder_name", "").strip() or cardholder
+                            if not _no_num:
+                                _result_status = "otp_3ds"
+                                log(f"[{idx+1}] \u274c Th\u1ebb k\u1ebf ti\u1ebfp (OTP) kh\xf4ng c\xf3 s\u1ed1 \u2014 d\u1eebng")
+                                break
+                            log(f"[{idx+1}] \U0001f504 OTP \u2014 F5 reload Stripe & th\u1eed th\u1ebb th\u1ee9 {_scard_attempt+1}: {_no_num[:4]}**** (l\u1ea7n {_scard_attempt+1}/5)")
+                            card_number = _no_num; exp_mmyy = _no_exp; cvv = _no_cvv; cardholder = _no_holder
+                            # F5 reload để thoát OTP popup, load lại trang checkout clean
+                            try: sp.reload(wait_until="domcontentloaded", timeout=30000)
+                            except Exception: pass
+                            try: sp.wait_for_load_state("load", timeout=20000)
+                            except Exception: pass
+                            sp.wait_for_timeout(3000)
+                            # Fill lại card/exp/cvc trên trang mới reload
+                            _stripe_fill(_card_sels, card_number, "Card number")
+                            sp.wait_for_timeout(400)
+                            _stripe_fill(_exp_sels, exp_mmyy, "Expiry")
+                            sp.wait_for_timeout(300)
+                            _stripe_fill(_cvc_sels, cvv, "CVC")
+                            sp.wait_for_timeout(300)
+                            if cardholder:
+                                _stripe_fill([
+                                    'input[name="billingName"]',
+                                    'input[autocomplete*="cc-name"]',
+                                    'input[placeholder*="Full name on card" i]',
+                                    'input[placeholder*="Cardholder" i]',
+                                ], cardholder, "Cardholder")
+                                sp.wait_for_timeout(200)
+                            # Fill lại phone
+                            _rph2 = f"({_random.choice(_area_codes)}) {_random.randint(200,999)}-{_random.randint(1000,9999)}"
+                            log(f"[{idx+1}] \U0001f4f1 Phone (OTP retry): {_rph2}")
+                            try:
+                                _rph2_r = sp.evaluate(
+                                    "() => { const i = document.querySelector("
+                                    "'input[name=\'phoneNumber\'],input[type=\'tel\']');"
+                                    " if(i){i.focus();i.value='';i.dispatchEvent(new Event('input',{bubbles:true}));return 'found';}"
+                                    " return 'not_found'; }"
+                                )
+                                if _rph2_r == 'found':
+                                    _rph2_el = sp.query_selector("input[name='phoneNumber'],input[type='tel']")
+                                    if _rph2_el:
+                                        _rph2_el.click(); _rph2_el.fill(''); _rph2_el.type(_rph2, delay=60)
+                            except Exception: pass
+                            sp.wait_for_timeout(500)
+                            # Click Pay lại
+                            for _opsel in [
+                                '[data-testid="hosted-payment-submit-button"]',
+                                'button:has-text("Subscribe")', 'button:has-text("Pay")',
+                                'button:has-text("Start trial")', 'button:has-text("Confirm")',
+                                'button[type="submit"]',
+                            ]:
+                                try:
+                                    _opl = sp.locator(_opsel).first
+                                    _opl.wait_for(state="visible", timeout=8000)
+                                    _opl.click()
+                                    log(f"[{idx+1}] \u2713 Re-click Pay (sau OTP F5): {_opsel}")
+                                    break
+                                except Exception: pass
+                            # Reset flags + re-run outer-while → inner poll
+                            sp.wait_for_timeout(1000)
+                            _s_pay_success = _s_card_declined = _s_payment_failed = False
+                            _s_otp_required = _s_captcha_blocked = False
+                            _s_captcha_clicked = False; _s_captcha_click_t = None
+                            _s_poll_t0 = _tw.time(); _s_last_log_t = _s_poll_t0
+                            continue  # outer while ─ re-run inner poll
 
                         elif _s_captcha_blocked:
                             _result_status = "captcha_blocked"

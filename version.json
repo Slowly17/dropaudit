@@ -1,5 +1,5 @@
 {
-  "version": "1.6.4",
+  "version": "1.6.5",
   "updated": "2026-07-03",
-  "notes": "v1.6.4: hỗ trợ import proxy dạng host:port:username:password (auth proxy), tự gán username/password khi bulk-assign và pick_next_proxy"
+  "notes": "v1.6.5: simen_trial - OTP/3DS không đóng script nữa, F5 reload Stripe + thử thẻ kế (note thẻ OTP), tối đa 5 thẻ"
 }
