@@ -1,5 +1,5 @@
 {
-  "version": "1.6.3",
-  "updated": "2026-07-01",
-  "notes": "v1.6.3: simen_trial card retry on declined (max 5), captcha_blocked keep browser alive + flag proxy"
+  "version": "1.6.4",
+  "updated": "2026-07-03",
+  "notes": "v1.6.4: hỗ trợ import proxy dạng host:port:username:password (auth proxy), tự gán username/password khi bulk-assign và pick_next_proxy"
 }
