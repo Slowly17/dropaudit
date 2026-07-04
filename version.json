@@ -1,5 +1,5 @@
 {
-  "version": "1.6.5",
-  "updated": "2026-07-03",
-  "notes": "v1.6.5: simen_trial - OTP/3DS không đóng script nữa, F5 reload Stripe + thử thẻ kế (note thẻ OTP), tối đa 5 thẻ"
+  "version": "1.6.6",
+  "updated": "2026-07-04",
+  "notes": "v1.6.6: fix check proxy bị lỗi/dead sai khi proxy có username/password (auth proxy) - đã đưa user:pass vào socks5h URL khi check"
 }

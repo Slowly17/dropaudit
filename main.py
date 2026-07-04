@@ -3463,7 +3463,8 @@ def api_check_proxy(proxy_id: str):
     if not px:
         raise HTTPException(404, "Proxy không tồn tại")
 
-    proxy_url = f"socks5h://{px['host']}:{px['port']}"
+    _px_auth = f"{px['username']}:{px['password']}@" if px.get('username') else ""
+    proxy_url = f"socks5h://{_px_auth}{px['host']}:{px['port']}"
     proxies_cfg = {"http": proxy_url, "https": proxy_url}
     ms = None; ip = None; alive = False; err = ""
     try:
@@ -3543,7 +3544,8 @@ def _do_check_one(proxy_id: str):
     px = next((p for p in pool["proxies"] if p["id"] == proxy_id), None)
     if not px:
         return
-    proxy_url = f"socks5h://{px['host']}:{px['port']}"
+    _px_auth = f"{px['username']}:{px['password']}@" if px.get('username') else ""
+    proxy_url = f"socks5h://{_px_auth}{px['host']}:{px['port']}"
     proxies_cfg = {"http": proxy_url, "https": proxy_url}
     ms = None; ip = None; alive = False
     try:
@@ -7007,7 +7009,8 @@ def api_check_proxy(proxy_id: str):
     if not px:
         raise HTTPException(404, "Proxy không tồn tại")
 
-    proxy_url = f"socks5h://{px['host']}:{px['port']}"
+    _px_auth = f"{px['username']}:{px['password']}@" if px.get('username') else ""
+    proxy_url = f"socks5h://{_px_auth}{px['host']}:{px['port']}"
     proxies_cfg = {"http": proxy_url, "https": proxy_url}
     ms = None; ip = None; alive = False; err = ""
     try:
@@ -7087,7 +7090,8 @@ def _do_check_one(proxy_id: str):
     px = next((p for p in pool["proxies"] if p["id"] == proxy_id), None)
     if not px:
         return
-    proxy_url = f"socks5h://{px['host']}:{px['port']}"
+    _px_auth = f"{px['username']}:{px['password']}@" if px.get('username') else ""
+    proxy_url = f"socks5h://{_px_auth}{px['host']}:{px['port']}"
     proxies_cfg = {"http": proxy_url, "https": proxy_url}
     ms = None; ip = None; alive = False
     try:
