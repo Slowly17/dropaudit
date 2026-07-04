@@ -1,5 +1,5 @@
 {
-  "version": "1.6.6",
+  "version": "1.6.7",
   "updated": "2026-07-04",
-  "notes": "v1.6.6: fix check proxy bị lỗi/dead sai khi proxy có username/password (auth proxy) - đã đưa user:pass vào socks5h URL khi check"
+  "notes": "v1.6.7: fix pre-check proxy trong script (simen_trial) bị lỗi SOCKS auth rejected khi proxy có username/password — nay nhúng user:pass vào URL check"
 }

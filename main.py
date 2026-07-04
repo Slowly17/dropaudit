@@ -2044,10 +2044,17 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
             _proxy_kwargs["proxy"]["username"] = _proxy_username
         if _proxy_password:
             _proxy_kwargs["proxy"]["password"] = _proxy_password
-        # Pre-check
+        # Pre-check — nhúng username:password vào URL (socks5h để proxy tự resolve DNS + auth)
         try:
-            _ptype = "socks5" if "socks5" in _proxy_server else "http"
-            _pcheck = {_ptype: _proxy_server, "https": _proxy_server}
+            _ptype = "socks5h" if "socks5" in _proxy_server else ("http" if _proxy_server.startswith("http") else "socks5h")
+            _phostport = _proxy_server.split("://", 1)[1] if "://" in _proxy_server else _proxy_server
+            if _proxy_username:
+                from urllib.parse import quote as _uq
+                _pauth = f"{_uq(_proxy_username, safe='')}:{_uq(_proxy_password, safe='')}@"
+            else:
+                _pauth = ""
+            _pcheck_url = f"{_ptype}://{_pauth}{_phostport}"
+            _pcheck = {"http": _pcheck_url, "https": _pcheck_url}
             log(f"⏱ Kiểm tra proxy: {_proxy_server} ...")
             _r = _req.get("https://api.ipify.org?format=json", proxies=_pcheck, timeout=12)
             _ip = _r.json().get("ip", "?")
@@ -5960,8 +5967,15 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
         if _proxy_password:
             _proxy_kwargs["proxy"]["password"] = _proxy_password
         try:
-            _ptype = "socks5" if "socks5" in _proxy_server else "http"
-            _pcheck = {_ptype: _proxy_server, "https": _proxy_server}
+            _ptype = "socks5h" if "socks5" in _proxy_server else ("http" if _proxy_server.startswith("http") else "socks5h")
+            _phostport = _proxy_server.split("://", 1)[1] if "://" in _proxy_server else _proxy_server
+            if _proxy_username:
+                from urllib.parse import quote as _uq
+                _pauth = f"{_uq(_proxy_username, safe='')}:{_uq(_proxy_password, safe='')}@"
+            else:
+                _pauth = ""
+            _pcheck_url = f"{_ptype}://{_pauth}{_phostport}"
+            _pcheck = {"http": _pcheck_url, "https": _pcheck_url}
             log(f"⏱ Kiểm tra proxy: {_proxy_server} ...")
             _r = _req.get("https://api.ipify.org?format=json", proxies=_pcheck, timeout=12)
             _ip = _r.json().get("ip", "?")
