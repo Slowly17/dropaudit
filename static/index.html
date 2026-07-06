@@ -165,6 +165,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
     <button class="btn btn-primary btn-sm" onclick="openModal('modal-create-profile')">+ Tạo profile</button>
     <button class="btn btn-ghost btn-sm" onclick="openModal('modal-bulk-create')">+ Tạo hàng loạt</button>
     <button class="btn btn-warn btn-sm" id="btn-bulk-assign-proxy" onclick="bulkAssignProxy()" disabled>🔀 Gán proxy hàng loạt</button>
+    <button class="btn btn-ghost btn-sm" onclick="reloadProfilesPage()" title="Tải lại danh sách profile">🔄 Reload</button>
     <div class="spacer"></div>
     <input type="text" id="search-profile" placeholder="Tìm profile..." style="width:180px;" oninput="renderProfiles()"/>
   </div>
@@ -667,6 +668,11 @@ function switchSubTab(group, name) {
 }
 
 // ===================== PROFILES =====================
+async function reloadProfilesPage() {
+  await loadProfiles();
+  showToast('Đã tải lại danh sách profile','ok');
+}
+
 async function loadProfiles() {
   try {
     const r = await fetch('/api/profiles');

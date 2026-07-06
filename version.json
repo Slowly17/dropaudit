@@ -1,5 +1,5 @@
 {
-  "version": "1.6.13",
+  "version": "1.6.14",
   "updated": "2026-07-05",
-  "notes": "v1.6.13: (1) fix simen_trial ket luan declined/failed qua som khi vua bam Pay the moi - tang thoi gian cho sau Pay 1s->3s + them grace period 6s truoc khi doc text ket qua, tranh doc nham banner declined cua the truoc con sot lai tren DOM; (2) fix khi retry the thu 2 tro di (ca duong declined-retry va OTP-retry) khong dien lai ZIP - luon giu ZIP cua the dau tien, gio da lay dung zip tu tung the trong queue va dien lai moi lan retry"
+  "notes": "v1.6.14: them nut Reload o tab Profiles de tai lai danh sach profile thu cong"
 }
