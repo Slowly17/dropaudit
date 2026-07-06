@@ -2770,6 +2770,10 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         _s_last_log_t = _s_poll_t0
                         _CAPTCHA_BLOCK_AFTER_S = 25.0
 
+                        _s_otp_confirm_count = 0  # số lần liên tiếp phát hiện OTP/3DS — chỉ chốt sau khi ổn định
+                        _S_OTP_MIN_ELAPSED   = 4.0   # bỏ qua check OTP trong 4s đầu (trang vừa load, dễ dính false-positive)
+                        _S_OTP_CONFIRM_NEED  = 3      # phải thấy OTP 3 lần liên tiếp (~2.4s) mới chốt thật
+
                         while True:
                             sp.wait_for_timeout(800)
                             _s_elapsed = _tw.time() - _s_poll_t0
@@ -2779,40 +2783,56 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                 log(f"[{idx+1}] ⏳ Poll {_s_elapsed:.0f}s — {'captcha widget' if _shc else 'chờ Stripe'}...")
                                 _s_last_log_t = _tw.time()
 
-                            # 0. OTP/3DS
-                            _s3ds = _sget_3ds_frames()
-                            if not _s_otp_required and _s3ds:
-                                log(f"[{idx+1}] 🔐 OTP/3DS popup ({_s3ds[0].url[:60]}) ({_s_elapsed:.1f}s)")
-                                _s_otp_required = True
-                                break
-                            try:
-                                _s_visa = sp.evaluate("""
-                                    () => {
-                                        const m = document.querySelector(
-                                            'iframe[src*="acs"], iframe[src*="3ds"], iframe[src*="authentication"], '
-                                            + 'iframe[src*="secure"], iframe[src*="otp"], iframe[src*="challenge"]'
-                                        );
-                                        return m ? m.src : null;
-                                    }
-                                """)
-                                if _s_visa and not _s_otp_required:
-                                    log(f"[{idx+1}] 🔐 OTP iframe DOM: {str(_s_visa)[:60]} ({_s_elapsed:.1f}s)")
+                            # 0. OTP/3DS — chỉ xét sau grace period & phải ổn định qua nhiều lần check
+                            # (tránh false-positive lúc Stripe vừa load, overlay "authentication"/"secure"
+                            #  thoáng qua chưa phải OTP thật)
+                            if _s_elapsed < _S_OTP_MIN_ELAPSED:
+                                _s3ds = []
+                                _s_visa = None
+                                _s_bp = False
+                            else:
+                                _s3ds = _sget_3ds_frames()
+                                _s_visa = None
+                                try:
+                                    _s_visa = sp.evaluate("""
+                                        () => {
+                                            const m = document.querySelector(
+                                                'iframe[src*="acs"], iframe[src*="3ds"], iframe[src*="authentication"], '
+                                                + 'iframe[src*="secure"], iframe[src*="otp"], iframe[src*="challenge"]'
+                                            );
+                                            return m ? m.src : null;
+                                        }
+                                    """)
+                                except Exception: pass
+                                _s_bp = False
+                                try:
+                                    _s_bp = sp.evaluate("""
+                                        () => {
+                                            const t = document.body ? document.body.innerText : '';
+                                            return t.includes('Keep your account safe')
+                                                || t.includes('one time code')
+                                                || t.includes('verification code');
+                                        }
+                                    """)
+                                except Exception: pass
+
+                            _s_otp_signal = bool(_s3ds) or bool(_s_visa) or bool(_s_bp)
+
+                            if _s_otp_signal and not _s_otp_required:
+                                _s_otp_confirm_count += 1
+                                if _s_otp_confirm_count < _S_OTP_CONFIRM_NEED:
+                                    log(f"[{idx+1}] ⏳ Nghi ngờ OTP/3DS (lần {_s_otp_confirm_count}/{_S_OTP_CONFIRM_NEED}) — chờ xác nhận thêm ({_s_elapsed:.1f}s)")
+                                    continue  # chưa chốt, poll tiếp để xác nhận ổn định
+                                if _s3ds:
+                                    log(f"[{idx+1}] 🔐 OTP/3DS popup xác nhận ({_s3ds[0].url[:60]}) ({_s_elapsed:.1f}s)")
                                     _s_otp_required = True
                                     break
-                            except Exception: pass
-
-                            # 0b. Bank OTP overlay
-                            try:
-                                _s_bp = sp.evaluate("""
-                                    () => {
-                                        const t = document.body ? document.body.innerText : '';
-                                        return t.includes('Keep your account safe')
-                                            || t.includes('one time code')
-                                            || t.includes('verification code');
-                                    }
-                                """)
-                                if _s_bp and not _s_otp_required:
-                                    log(f"[{idx+1}] 🏦 Bank OTP overlay — click CONTINUE ({_s_elapsed:.1f}s)")
+                                if _s_visa:
+                                    log(f"[{idx+1}] 🔐 OTP iframe DOM xác nhận: {str(_s_visa)[:60]} ({_s_elapsed:.1f}s)")
+                                    _s_otp_required = True
+                                    break
+                                if _s_bp:
+                                    log(f"[{idx+1}] 🏦 Bank OTP overlay xác nhận — click CONTINUE ({_s_elapsed:.1f}s)")
                                     _s_dismissed = False
                                     for _sbs in [
                                         "button.ButtonElement:has-text('CONTINUE')",
@@ -2827,13 +2847,15 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                             _s_dismissed = True
                                             log(f"[{idx+1}] ✓ Dismissed bank popup — tiếp tục poll")
                                             sp.wait_for_timeout(1500)
+                                            _s_otp_confirm_count = 0
                                             break
                                         except Exception: pass
                                     if not _s_dismissed:
                                         log(f"[{idx+1}] ⚠ Bank popup nhưng không dismiss được → OTP required")
                                         _s_otp_required = True
                                         break
-                            except Exception: pass
+                            else:
+                                _s_otp_confirm_count = 0  # tín hiệu biến mất → reset, không phải OTP thật
 
                             # 1. Declined text
                             _stxt = _sget_page_text()

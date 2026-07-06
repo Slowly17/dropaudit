@@ -1,5 +1,5 @@
 {
-  "version": "1.6.8",
+  "version": "1.6.9",
   "updated": "2026-07-05",
-  "notes": "v1.6.8: fix root cause proxy auth bi mat - dropdown Tao Profile hard-code username/password rong khi chon proxy tu pool; modal Sua Profile dung sai method PUT (backend chi co PATCH) va thieu o nhap username/password; da them log ro rang co-auth/khong-auth khi pre-check proxy trong script"
+  "notes": "v1.6.9: fix simen_trial ket luan OTP/3DS qua som ngay sau Pay (false-positive luc Stripe chua load xong) - them grace period 4s + yeu cau tin hieu OTP on dinh 3 lan lien tiep moi chot that, tranh F5 nham khi ket qua thanh cong/declined chua kip hien"
 }
