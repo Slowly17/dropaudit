@@ -300,6 +300,12 @@ def create_profile(body: Profile):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     save_data(data)
+    # Gán proxy từ pool (dropdown) → tăng used_count như bulk-assign
+    if body.proxy_server:
+        try:
+            increment_proxy_used_by_server(body.proxy_server)
+        except Exception:
+            pass
     return {**data["profiles"][pid], "id": pid, "status": "stopped", "live_seed": None}
 
 @app.patch("/api/profiles/{pid}")
@@ -4201,6 +4207,12 @@ def create_profile(body: Profile):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     save_data(data)
+    # Gán proxy từ pool (dropdown) → tăng used_count như bulk-assign
+    if body.proxy_server:
+        try:
+            increment_proxy_used_by_server(body.proxy_server)
+        except Exception:
+            pass
     return {**data["profiles"][pid], "id": pid, "status": "stopped", "live_seed": None}
 
 @app.patch("/api/profiles/{pid}")

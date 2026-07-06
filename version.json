@@ -1,5 +1,5 @@
 {
-  "version": "1.6.10",
+  "version": "1.6.11",
   "updated": "2026-07-05",
-  "notes": "v1.6.10: tang thoi gian cho ket qua sau Pay truoc khi xet OTP/3DS - grace period 4s -> 12s, xac nhan on dinh 3 -> 5 lan lien tiep, tranh ket luan OTP qua som khi ket qua chua ro"
+  "notes": "v1.6.11: fix tao profile chon proxy tu dropdown khong tang used_count trong pool - gio da tu dong +1 used khi tao profile co gan proxy_server"
 }
