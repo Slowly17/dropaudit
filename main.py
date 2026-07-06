@@ -2763,7 +2763,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         _scard_attempt += 1
 
                         log(f"[{idx+1}] 🔄 Smart poll sau Pay (đợi kết quả)...")
-                        sp.wait_for_timeout(1000)
+                        sp.wait_for_timeout(3000)
 
                         _s_pay_success    = False
                         _s_card_declined  = False
@@ -2779,6 +2779,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         _s_otp_confirm_count = 0  # số lần liên tiếp phát hiện OTP/3DS — chỉ chốt sau khi ổn định
                         _S_OTP_MIN_ELAPSED   = 12.0   # bỏ qua check OTP trong 12s đầu (trang vừa load/redirect, dễ dính false-positive)
                         _S_OTP_CONFIRM_NEED  = 5       # phải thấy OTP 5 lần liên tiếp (~4s) mới chốt thật
+                        _S_RESULT_MIN_ELAPSED = 6.0    # bỏ qua check declined/failed trong 6s đầu — tránh đọc nhầm banner cũ của thẻ trước còn sót lại trên trang khi vừa Pay xong
 
                         while True:
                             sp.wait_for_timeout(800)
@@ -2863,19 +2864,20 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             else:
                                 _s_otp_confirm_count = 0  # tín hiệu biến mất → reset, không phải OTP thật
 
-                            # 1. Declined text
-                            _stxt = _sget_page_text()
-                            if any(kw in _stxt for kw in _DECLINE_KEYWORDS_S):
-                                _skw = next(k for k in _DECLINE_KEYWORDS_S if k in _stxt)
-                                log(f"[{idx+1}] ❌ Declined: '{_skw}' ({_s_elapsed:.1f}s)")
-                                _s_card_declined = True
-                                break
+                            # 1 & 2. Declined / Payment failed — chỉ xét sau grace period, tránh đọc nhầm
+                            # banner declined của THẺ TRƯỚC còn sót lại trên DOM ngay lúc vừa bấm Pay thẻ mới
+                            if _s_elapsed >= _S_RESULT_MIN_ELAPSED:
+                                _stxt = _sget_page_text()
+                                if any(kw in _stxt for kw in _DECLINE_KEYWORDS_S):
+                                    _skw = next(k for k in _DECLINE_KEYWORDS_S if k in _stxt)
+                                    log(f"[{idx+1}] ❌ Declined: '{_skw}' ({_s_elapsed:.1f}s)")
+                                    _s_card_declined = True
+                                    break
 
-                            # 2. Payment failed
-                            if any(kw in _stxt for kw in _FAIL_KEYWORDS_S):
-                                log(f"[{idx+1}] ⚠ Payment failed ({_s_elapsed:.1f}s)")
-                                _s_payment_failed = True
-                                break
+                                if any(kw in _stxt for kw in _FAIL_KEYWORDS_S):
+                                    log(f"[{idx+1}] ⚠ Payment failed ({_s_elapsed:.1f}s)")
+                                    _s_payment_failed = True
+                                    break
 
                             # 3. Success URL
                             if _sis_success_url():
@@ -2927,12 +2929,15 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             _no_exp    = _next_otp_row.get("exp_month", "").strip().zfill(2) + _next_otp_row.get("exp_year", "")[-2:]
                             _no_cvv    = _next_otp_row.get("cvv", "").strip()
                             _no_holder = _next_otp_row.get("cardholder_name", "").strip() or cardholder
+                            _no_zip    = _next_otp_row.get("zip", "").strip() or _next_otp_row.get("zip_code", "").strip()
                             if not _no_num:
                                 _result_status = "otp_3ds"
                                 log(f"[{idx+1}] \u274c Th\u1ebb k\u1ebf ti\u1ebfp (OTP) kh\xf4ng c\xf3 s\u1ed1 \u2014 d\u1eebng")
                                 break
                             log(f"[{idx+1}] \U0001f504 OTP \u2014 F5 reload Stripe & th\u1eed th\u1ebb th\u1ee9 {_scard_attempt+1}: {_no_num[:4]}**** (l\u1ea7n {_scard_attempt+1}/5)")
                             card_number = _no_num; exp_mmyy = _no_exp; cvv = _no_cvv; cardholder = _no_holder
+                            if _no_zip:
+                                zip_code = _no_zip
                             # F5 reload để thoát OTP popup, load lại trang checkout clean
                             try: sp.reload(wait_until="domcontentloaded", timeout=30000)
                             except Exception: pass
@@ -2953,6 +2958,13 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                     'input[placeholder*="Full name on card" i]',
                                     'input[placeholder*="Cardholder" i]',
                                 ], cardholder, "Cardholder")
+                                sp.wait_for_timeout(200)
+                            if zip_code:
+                                _stripe_fill([
+                                    'input[name="postalCode"]',
+                                    'input[autocomplete*="postal-code"]',
+                                    'input[placeholder*="ZIP" i]',
+                                ], zip_code, "ZIP")
                                 sp.wait_for_timeout(200)
                             # Fill lại phone
                             _rph2 = f"({_random.choice(_area_codes)}) {_random.randint(200,999)}-{_random.randint(1000,9999)}"
@@ -3040,12 +3052,15 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             _nc_exp    = _next_card_row.get("exp_month", "").strip().zfill(2) + _next_card_row.get("exp_year", "")[-2:]
                             _nc_cvv    = _next_card_row.get("cvv", "").strip()
                             _nc_holder = _next_card_row.get("cardholder_name", "").strip() or cardholder
+                            _nc_zip    = _next_card_row.get("zip", "").strip() or _next_card_row.get("zip_code", "").strip()
                             if not _nc_num:
                                 _result_status = "declined"
                                 log(f"[{idx+1}] \u274c Th\u1ebb k\u1ebf ti\u1ebfp kh\xf4ng c\xf3 s\u1ed1 \u2014 d\u1eebng")
                                 break
                             log(f"[{idx+1}] \U0001f504 Th\u1eed th\u1ebb th\u1ee9 {_scard_attempt+1}: {_nc_num[:4]}**** (l\u1ea7n {_scard_attempt+1}/5)")
                             card_number = _nc_num; exp_mmyy = _nc_exp; cvv = _nc_cvv; cardholder = _nc_holder
+                            if _nc_zip:
+                                zip_code = _nc_zip
                             # Refill Stripe
                             _stripe_fill(_card_sels, card_number, "Card number")
                             sp.wait_for_timeout(400)
@@ -3061,7 +3076,13 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                     'input[placeholder*="Cardholder" i]',
                                 ], cardholder, "Cardholder")
                                 sp.wait_for_timeout(200)
-                            # Refill phone
+                            if zip_code:
+                                _stripe_fill([
+                                    'input[name="postalCode"]',
+                                    'input[autocomplete*="postal-code"]',
+                                    'input[placeholder*="ZIP" i]',
+                                ], zip_code, "ZIP")
+                                sp.wait_for_timeout(200)
                             _rph = f"({_random.choice(_area_codes)}) {_random.randint(200,999)}-{_random.randint(1000,9999)}"
                             log(f"[{idx+1}] \U0001f4f1 Phone (retry): {_rph}")
                             try:

@@ -1,5 +1,5 @@
 {
-  "version": "1.6.12",
+  "version": "1.6.13",
   "updated": "2026-07-05",
-  "notes": "v1.6.12: fix UI tab Proxy khong tu refresh sau khi tao profile chon proxy tu dropdown - used_count da +1 dung o backend (tu 1.6.11) nhung bang Proxy chua reload nen nhin nhu chua cong. Gio tu dong loadProxies() sau khi tao profile thanh cong"
+  "notes": "v1.6.13: (1) fix simen_trial ket luan declined/failed qua som khi vua bam Pay the moi - tang thoi gian cho sau Pay 1s->3s + them grace period 6s truoc khi doc text ket qua, tranh doc nham banner declined cua the truoc con sot lai tren DOM; (2) fix khi retry the thu 2 tro di (ca duong declined-retry va OTP-retry) khong dien lai ZIP - luon giu ZIP cua the dau tien, gio da lay dung zip tu tung the trong queue va dien lai moi lan retry"
 }
