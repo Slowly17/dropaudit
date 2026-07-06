@@ -2771,8 +2771,8 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         _CAPTCHA_BLOCK_AFTER_S = 25.0
 
                         _s_otp_confirm_count = 0  # số lần liên tiếp phát hiện OTP/3DS — chỉ chốt sau khi ổn định
-                        _S_OTP_MIN_ELAPSED   = 4.0   # bỏ qua check OTP trong 4s đầu (trang vừa load, dễ dính false-positive)
-                        _S_OTP_CONFIRM_NEED  = 3      # phải thấy OTP 3 lần liên tiếp (~2.4s) mới chốt thật
+                        _S_OTP_MIN_ELAPSED   = 12.0   # bỏ qua check OTP trong 12s đầu (trang vừa load/redirect, dễ dính false-positive)
+                        _S_OTP_CONFIRM_NEED  = 5       # phải thấy OTP 5 lần liên tiếp (~4s) mới chốt thật
 
                         while True:
                             sp.wait_for_timeout(800)

@@ -1,5 +1,5 @@
 {
-  "version": "1.6.9",
+  "version": "1.6.10",
   "updated": "2026-07-05",
-  "notes": "v1.6.9: fix simen_trial ket luan OTP/3DS qua som ngay sau Pay (false-positive luc Stripe chua load xong) - them grace period 4s + yeu cau tin hieu OTP on dinh 3 lan lien tiep moi chot that, tranh F5 nham khi ket qua thanh cong/declined chua kip hien"
+  "notes": "v1.6.10: tang thoi gian cho ket qua sau Pay truoc khi xet OTP/3DS - grace period 4s -> 12s, xac nhan on dinh 3 -> 5 lan lien tiep, tranh ket luan OTP qua som khi ket qua chua ro"
 }
