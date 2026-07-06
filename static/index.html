@@ -908,6 +908,7 @@ async function createProfile() {
     document.getElementById('cp-note').value='';
     showToast('Tạo profile thành công','ok');
     loadProfiles();
+    if (proxy_server) loadProxies();  // refresh bảng proxy để thấy used_count vừa +1
   } else {
     const e = await r.json();
     showToast('Lỗi: '+(e.error||r.status),'err');

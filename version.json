@@ -1,5 +1,5 @@
 {
-  "version": "1.6.11",
+  "version": "1.6.12",
   "updated": "2026-07-05",
-  "notes": "v1.6.11: fix tao profile chon proxy tu dropdown khong tang used_count trong pool - gio da tu dong +1 used khi tao profile co gan proxy_server"
+  "notes": "v1.6.12: fix UI tab Proxy khong tu refresh sau khi tao profile chon proxy tu dropdown - used_count da +1 dung o backend (tu 1.6.11) nhung bang Proxy chua reload nen nhin nhu chua cong. Gio tu dong loadProxies() sau khi tao profile thanh cong"
 }
