@@ -569,8 +569,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       </select>
     </div>
     <div class="form-group">
-      <label>Proxy</label>
-      <input type="text" id="ep-proxy" placeholder="socks5://user:pass@host:port"/>
+      <label>Proxy server</label>
+      <input type="text" id="ep-proxy" placeholder="socks5://host:port"/>
+    </div>
+    <div class="form-group">
+      <label>Proxy username (nếu có)</label>
+      <input type="text" id="ep-proxy-user" placeholder="Username"/>
+    </div>
+    <div class="form-group">
+      <label>Proxy password (nếu có)</label>
+      <input type="text" id="ep-proxy-pass" placeholder="Password"/>
     </div>
     <div class="form-group">
       <label>Ghi chú</label>
@@ -854,7 +862,7 @@ function populateCreateProxyDropdown() {
     const statusIcon = px.alive===true?' 🟢':px.alive===false?' 🔴':'';
     const label = `${px.host||'?'}:${px.port||''}${statusIcon} (used:${px.used_count||0})`;
     const opt = document.createElement('option');
-    opt.value = JSON.stringify({server:`socks5://${px.host}:${px.port}`, username:'', password:''});
+    opt.value = JSON.stringify({server:`socks5://${px.host}:${px.port}`, username: px.username||'', password: px.password||''});
     opt.textContent = label;
     sel.appendChild(opt);
   });
@@ -952,7 +960,9 @@ function openEditProfile(id) {
   document.getElementById('ep-id').value = p.id;
   document.getElementById('ep-name').value = p.name;
   document.getElementById('ep-os').value = p.os||'windows';
-  document.getElementById('ep-proxy').value = p.proxy||'';
+  document.getElementById('ep-proxy').value = p.proxy_server||'';
+  document.getElementById('ep-proxy-user').value = p.proxy_username||'';
+  document.getElementById('ep-proxy-pass').value = p.proxy_password||'';
   document.getElementById('ep-note').value = p.note||'';
   openModal('modal-edit-profile');
 }
@@ -961,11 +971,12 @@ async function saveEditProfile() {
   const id = document.getElementById('ep-id').value;
   const body = {
     name: document.getElementById('ep-name').value.trim(),
-    os: document.getElementById('ep-os').value,
-    proxy: document.getElementById('ep-proxy').value.trim() || null,
+    proxy_server: document.getElementById('ep-proxy').value.trim() || null,
+    proxy_username: document.getElementById('ep-proxy-user').value.trim() || null,
+    proxy_password: document.getElementById('ep-proxy-pass').value.trim() || null,
     note: document.getElementById('ep-note').value.trim()
   };
-  const r = await fetch('/api/profiles/'+id, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r = await fetch('/api/profiles/'+id, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.ok) {
     closeModal('modal-edit-profile');
     showToast('Đã lưu','ok');

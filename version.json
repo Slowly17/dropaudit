@@ -1,5 +1,5 @@
 {
-  "version": "1.6.7",
-  "updated": "2026-07-04",
-  "notes": "v1.6.7: fix pre-check proxy trong script (simen_trial) bị lỗi SOCKS auth rejected khi proxy có username/password — nay nhúng user:pass vào URL check"
+  "version": "1.6.8",
+  "updated": "2026-07-05",
+  "notes": "v1.6.8: fix root cause proxy auth bi mat - dropdown Tao Profile hard-code username/password rong khi chon proxy tu pool; modal Sua Profile dung sai method PUT (backend chi co PATCH) va thieu o nhap username/password; da them log ro rang co-auth/khong-auth khi pre-check proxy trong script"
 }

@@ -2055,7 +2055,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                 _pauth = ""
             _pcheck_url = f"{_ptype}://{_pauth}{_phostport}"
             _pcheck = {"http": _pcheck_url, "https": _pcheck_url}
-            log(f"⏱ Kiểm tra proxy: {_proxy_server} ...")
+            log(f"⏱ Kiểm tra proxy: {_proxy_server} ({'có auth' if _proxy_username else 'không auth'}) ...")
             _r = _req.get("https://api.ipify.org?format=json", proxies=_pcheck, timeout=12)
             _ip = _r.json().get("ip", "?")
             log(f"✅ Proxy OK — IP: {_ip}")
@@ -5976,7 +5976,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                 _pauth = ""
             _pcheck_url = f"{_ptype}://{_pauth}{_phostport}"
             _pcheck = {"http": _pcheck_url, "https": _pcheck_url}
-            log(f"⏱ Kiểm tra proxy: {_proxy_server} ...")
+            log(f"⏱ Kiểm tra proxy: {_proxy_server} ({'có auth' if _proxy_username else 'không auth'}) ...")
             _r = _req.get("https://api.ipify.org?format=json", proxies=_pcheck, timeout=12)
             _ip = _r.json().get("ip", "?")
             log(f"✅ Proxy OK — IP: {_ip}")
