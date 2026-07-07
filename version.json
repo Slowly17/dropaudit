@@ -1,5 +1,5 @@
 {
-  "version": "1.6.14",
+  "version": "1.6.15",
   "updated": "2026-07-05",
-  "notes": "v1.6.14: them nut Reload o tab Profiles de tai lai danh sach profile thu cong"
+  "notes": "v1.6.15: fix goc doc nham banner declined cu cua the truoc khi retry the moi (khong reload trang). Them ham _swait_banner_clear() chu dong cho banner declined/failed cu bien mat khoi DOM truoc khi bam Pay lai (ca duong declined-retry va OTP-retry). Neu timeout (DOM chua chac sach), tu dong keo dai grace period 6s->15s va bat buoc tin hieu declined/failed on dinh 3 lan lien tiep moi chot that, tranh bo sot bat ky case nao."
 }

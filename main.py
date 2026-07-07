@@ -2691,6 +2691,21 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                             except Exception: pass
                         return " ".join(_texts)
 
+                    def _swait_banner_clear(max_wait=8.0):
+                        """Cho banner declined/failed CU bien mat khoi DOM truoc khi Pay lai.
+                        Tranh truong hop poll ket qua cho the MOI doc trung banner con sot
+                        lai cua the TRUOC (do retry khong reload trang, chi clear+fill).
+                        Tra ve True neu da sach, False neu timeout (van tiep tuc, chi log canh bao)."""
+                        _wt0 = _tw.time()
+                        _all_kw = _DECLINE_KEYWORDS_S + _FAIL_KEYWORDS_S
+                        while _tw.time() - _wt0 < max_wait:
+                            _wtxt = _sget_page_text()
+                            if not any(kw in _wtxt for kw in _all_kw):
+                                return True
+                            sp.wait_for_timeout(500)
+                        log(f"[{idx+1}] \u26a0 Banner declined/failed cu van con sau {max_wait:.0f}s cho \u2014 tiep tuc (rui ro doc nham)")
+                        return False
+
                     def _sis_success_url():
                         try:
                             _su = sp.url
@@ -2759,6 +2774,7 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
 
                     # ── Card retry outer loop (tối đa 5 thẻ) ──────────────────────────────
                     _scard_attempt = 0
+                    _s_dom_dirty = False  # True nếu _swait_banner_clear timeout ở lần retry trước — banner cũ chưa chắc đã sạch
                     while True:
                         _scard_attempt += 1
 
@@ -2779,7 +2795,12 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                         _s_otp_confirm_count = 0  # số lần liên tiếp phát hiện OTP/3DS — chỉ chốt sau khi ổn định
                         _S_OTP_MIN_ELAPSED   = 12.0   # bỏ qua check OTP trong 12s đầu (trang vừa load/redirect, dễ dính false-positive)
                         _S_OTP_CONFIRM_NEED  = 5       # phải thấy OTP 5 lần liên tiếp (~4s) mới chốt thật
-                        _S_RESULT_MIN_ELAPSED = 6.0    # bỏ qua check declined/failed trong 6s đầu — tránh đọc nhầm banner cũ của thẻ trước còn sót lại trên trang khi vừa Pay xong
+                        # Nếu lần retry trước _swait_banner_clear timeout (DOM chưa chắc sạch) → kéo dài
+                        # grace period + bắt buộc xác nhận ổn định nhiều lần để giảm rủi ro đọc nhầm banner cũ
+                        _S_RESULT_MIN_ELAPSED = 15.0 if _s_dom_dirty else 6.0
+                        _S_RESULT_CONFIRM_NEED = 3 if _s_dom_dirty else 1  # số lần liên tiếp phải thấy trước khi chốt declined/failed
+                        _s_result_confirm_count = 0
+                        _s_dom_dirty = False  # reset — sẽ set lại nếu lần retry NÀY chờ banner timeout
 
                         while True:
                             sp.wait_for_timeout(800)
@@ -2865,19 +2886,29 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                 _s_otp_confirm_count = 0  # tín hiệu biến mất → reset, không phải OTP thật
 
                             # 1 & 2. Declined / Payment failed — chỉ xét sau grace period, tránh đọc nhầm
-                            # banner declined của THẺ TRƯỚC còn sót lại trên DOM ngay lúc vừa bấm Pay thẻ mới
+                            # banner declined của THẺ TRƯỚC còn sót lại trên DOM ngay lúc vừa bấm Pay thẻ mới.
+                            # Nếu lần retry trước _swait_banner_clear timeout (DOM có thể chưa sạch) → bắt buộc
+                            # tín hiệu phải xuất hiện ổn định _S_RESULT_CONFIRM_NEED lần liên tiếp mới chốt thật.
                             if _s_elapsed >= _S_RESULT_MIN_ELAPSED:
                                 _stxt = _sget_page_text()
-                                if any(kw in _stxt for kw in _DECLINE_KEYWORDS_S):
-                                    _skw = next(k for k in _DECLINE_KEYWORDS_S if k in _stxt)
-                                    log(f"[{idx+1}] ❌ Declined: '{_skw}' ({_s_elapsed:.1f}s)")
-                                    _s_card_declined = True
-                                    break
+                                _s_decl_hit = any(kw in _stxt for kw in _DECLINE_KEYWORDS_S)
+                                _s_fail_hit = any(kw in _stxt for kw in _FAIL_KEYWORDS_S)
 
-                                if any(kw in _stxt for kw in _FAIL_KEYWORDS_S):
+                                if _s_decl_hit or _s_fail_hit:
+                                    _s_result_confirm_count += 1
+                                    if _s_result_confirm_count < _S_RESULT_CONFIRM_NEED:
+                                        log(f"[{idx+1}] ⏳ Nghi ngờ declined/failed (lần {_s_result_confirm_count}/{_S_RESULT_CONFIRM_NEED}, DOM chưa chắc sạch) — chờ xác nhận thêm ({_s_elapsed:.1f}s)")
+                                        continue
+                                    if _s_decl_hit:
+                                        _skw = next(k for k in _DECLINE_KEYWORDS_S if k in _stxt)
+                                        log(f"[{idx+1}] ❌ Declined: '{_skw}' ({_s_elapsed:.1f}s)")
+                                        _s_card_declined = True
+                                        break
                                     log(f"[{idx+1}] ⚠ Payment failed ({_s_elapsed:.1f}s)")
                                     _s_payment_failed = True
                                     break
+                                else:
+                                    _s_result_confirm_count = 0  # tín hiệu biến mất → reset
 
                             # 3. Success URL
                             if _sis_success_url():
@@ -2982,6 +3013,9 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                         _rph2_el.click(); _rph2_el.fill(''); _rph2_el.type(_rph2, delay=60)
                             except Exception: pass
                             sp.wait_for_timeout(500)
+                            # Chờ banner declined/failed cũ (nếu còn sót từ trước F5) biến mất trước khi Pay lại
+                            if not _swait_banner_clear(max_wait=8.0):
+                                _s_dom_dirty = True
                             # Click Pay lại
                             for _opsel in [
                                 '[data-testid="hosted-payment-submit-button"]',
@@ -3097,6 +3131,10 @@ def _run_simen_trial(tid: str, profile: dict, rows: list[dict]):
                                     if _rph_el:
                                         _rph_el.click(); _rph_el.fill(''); _rph_el.type(_rph, delay=60)
                             except Exception: pass
+                            # Chờ banner declined cũ (của thẻ vừa retry) biến mất khỏi DOM trước khi
+                            # Pay lại — tránh vòng poll kế tiếp đọc trúng banner cũ (không reload trang)
+                            if not _swait_banner_clear(max_wait=8.0):
+                                _s_dom_dirty = True
                             # Re-click Pay
                             for _rpsel in [
                                 '[data-testid="hosted-payment-submit-button"]',
